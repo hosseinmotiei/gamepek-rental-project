@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /admin
+Disallow: /cart
+Disallow: /checkout
+Disallow: /profile
+Disallow: /auth
+
+Sitemap: https://gamepek.com/sitemap.xml

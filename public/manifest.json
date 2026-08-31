@@ -1,0 +1,22 @@
+{
+  "name": "گیم‌پک",
+  "short_name": "GamePek",
+  "description": "فروشگاه تخصصی پلی‌استیشن در ایران",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#0066FF",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/logos/logo-icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/images/logos/logo-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

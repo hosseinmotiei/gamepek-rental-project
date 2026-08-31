@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600" role="img" aria-label="تصویر موجود نیست">
+  <rect width="600" height="600" fill="#F5F5F5"/>
+  <g fill="none" stroke="#B0B0B0" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="150" y="180" width="300" height="240" rx="16"/>
+    <circle cx="230" cy="250" r="28"/>
+    <path d="M150 380 L250 300 L330 360 L400 300 L450 340 L450 400 A20 20 0 0 1 430 420 L170 420 A20 20 0 0 1 150 400 Z"/>
+  </g>
+</svg>

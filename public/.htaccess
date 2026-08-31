@@ -1,0 +1,48 @@
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send Requests To Front Controller...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# Upload size limits, mod_php fallback -- .user.ini (see public/.user.ini)
+# only works when PHP runs as FastCGI/PHP-FPM. If this host instead runs
+# PHP as an Apache module, .user.ini is silently ignored entirely and the
+# server's much lower global default applies -- a phone photo can then
+# exceed that limit and get silently dropped by PHP itself, before Laravel
+# ever sees the request, with no error anywhere. These directives are a
+# genuine no-op (Apache ignores the whole block) on any server where
+# mod_php isn't loaded, so this is safe to ship unconditionally.
+<IfModule mod_php.c>
+    php_value upload_max_filesize 20M
+    php_value post_max_size 25M
+    php_value memory_limit 256M
+    php_value max_execution_time 120
+</IfModule>
+<IfModule mod_php7.c>
+    php_value upload_max_filesize 20M
+    php_value post_max_size 25M
+    php_value memory_limit 256M
+    php_value max_execution_time 120
+</IfModule>
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 20M
+    php_value post_max_size 25M
+    php_value memory_limit 256M
+    php_value max_execution_time 120
+</IfModule>
