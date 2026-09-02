@@ -105,6 +105,15 @@
         </a>
         @endcan
 
+        {{-- Wallet--}}
+        @can('view_payments')
+        <a href="{{ route('admin.wallet.index') }}"
+           class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white text-sm {{ request()->routeIs('admin.wallet.*') ? 'active' : '' }}">
+            <i class="fa-solid fa-wallet w-5 text-center text-blue-300"></i>
+            <span>کیف پول</span>
+        </a>
+        @endcan
+
         {{-- Users--}}
         @can('view_users')
         <a href="{{ route('admin.users.index') }}"

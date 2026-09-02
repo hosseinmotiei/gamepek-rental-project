@@ -58,14 +58,14 @@
                     <p class="text-sm text-gray-500" dir="ltr">{{ $user->mobile }}</p>
                 </div>
                 <div class="flex flex-row md:flex-col justify-around md:justify-start gap-0 md:gap-4 text-center md:text-right">
-                    <div onclick="alert('این بخش در حال توسعه است.')" class="flex-1 md:flex-none flex flex-col md:flex-row md:items-center md:justify-between py-1 md:py-0 cursor-pointer">
+                    <div onclick="switchProfileTab('wallet')" class="flex-1 md:flex-none flex flex-col md:flex-row md:items-center md:justify-between py-1 md:py-0 cursor-pointer">
                         <div class="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 mb-1 md:mb-0">
                             <i class="fa-solid fa-wallet text-gray-400 text-xl md:text-base hidden md:block"></i>
                             <span class="text-[10px] md:text-xs text-gray-500">کیف پول</span>
                         </div>
                         <div class="flex flex-col md:items-end">
-                            <span class="text-xs md:text-sm font-bold text-gray-800">{{ persian_number($user->wallet_balance ?? 0) }} <span class="text-[9px] md:text-[10px] font-normal">تومان</span></span>
-                            <button onclick="alert('این بخش در حال توسعه است.')" class="text-[10px] text-brandBlue mt-0.5 hidden md:block">افزایش موجودی <i class="fa-solid fa-angle-left"></i></button>
+                            <span class="text-xs md:text-sm font-bold text-gray-800"><span id="wallet-sidebar-balance">۰</span> <span class="text-[9px] md:text-[10px] font-normal">تومان</span></span>
+                            <button onclick="switchProfileTab('wallet')" class="text-[10px] text-brandBlue mt-0.5 hidden md:block">افزایش موجودی <i class="fa-solid fa-angle-left"></i></button>
                         </div>
                     </div>
                     <div class="w-px bg-gray-100 mx-2 md:hidden"></div>
@@ -106,6 +106,14 @@
                     <div class="flex items-center gap-3">
                         <i class="fa-solid fa-bag-shopping w-5 text-center text-gray-400 group-hover:text-brandBlue transition-colors"></i>
                         <span class="text-sm font-medium">سفارش‌ها</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-left text-[10px] text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                    <div class="active-indicator hidden w-1 h-full bg-brandBlue absolute right-0 top-0"></div>
+                </button>
+                <button onclick="switchProfileTab('wallet', this)" data-tab="wallet" class="sidebar-link w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 text-gray-700 transition-colors border-b border-gray-50 group relative">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid fa-wallet w-5 text-center text-gray-400 group-hover:text-brandBlue transition-colors"></i>
+                        <span class="text-sm font-medium">کیف پول</span>
                     </div>
                     <i class="fa-solid fa-chevron-left text-[10px] text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"></i>
                     <div class="active-indicator hidden w-1 h-full bg-brandBlue absolute right-0 top-0"></div>
@@ -209,6 +217,10 @@
                         <span class="text-[13px] font-medium">سفارش‌ها</span>
                         <div class="flex items-center gap-3"><i class="fa-solid fa-bag-shopping text-gray-400"></i><i class="fa-solid fa-chevron-left text-[10px] text-gray-300 w-2"></i></div>
                     </button>
+                    <button onclick="switchProfileTab('wallet')" class="flex items-center justify-between w-full px-4 py-3.5 active:bg-gray-50 text-gray-700 border-b border-gray-100">
+                        <span class="text-[13px] font-medium">کیف پول</span>
+                        <div class="flex items-center gap-3"><i class="fa-solid fa-wallet text-gray-400"></i><i class="fa-solid fa-chevron-left text-[10px] text-gray-300 w-2"></i></div>
+                    </button>
                     <button onclick="switchProfileTab('addresses')" class="flex items-center justify-between w-full px-4 py-3.5 active:bg-gray-50 text-gray-700 border-b border-gray-100">
                         <span class="text-[13px] font-medium">آدرس‌ها</span>
                         <div class="flex items-center gap-3"><i class="fa-solid fa-location-dot text-gray-400"></i><i class="fa-solid fa-chevron-left text-[10px] text-gray-300 w-2"></i></div>
@@ -230,6 +242,7 @@
                         <i class="fa-solid fa-arrow-right-from-bracket text-red-500"></i>
                     </button>
                 </div>
+            </div>
 
             {{-- ────── SECTION 2: ORDERS ────── --}}
             <div id="sec-orders" class="profile-section hidden bg-white md:rounded-2xl md:border border-gray-200 shadow-sm flex-col min-h-[600px] w-full">
@@ -464,6 +477,142 @@
                     </div>
                     @endforeach
                     @endif
+                </div>
+            </div>
+
+            {{-- ────── SECTION 4: WALLET ──────
+                 Frontend/design prototype only. There is no wallet_balance
+                 column on users yet, so balance starts at 0 and lives
+                 entirely in localStorage; top-up/withdraw/history are mock,
+                 client-side-only state with no backend wiring. Replace this
+                 with real API calls (and a real balance column) when the
+                 wallet backend ships. --}}
+            @php
+                $walletId = 'GP-' . str_pad((string) $user->id, 6, '0', STR_PAD_LEFT);
+            @endphp
+            <div id="sec-wallet" class="profile-section hidden bg-white md:rounded-2xl md:border border-gray-200 shadow-sm flex-col min-h-[600px] w-full">
+                <div class="hidden md:flex justify-between items-center px-6 py-5 border-b border-gray-100">
+                    <h2 class="font-bold text-gray-800 text-lg">کیف پول</h2>
+                </div>
+
+                <div class="p-4 md:p-6 flex flex-col gap-5 max-w-xl">
+
+                    {{-- Balance Card --}}
+                    <div class="bg-gradient-to-l from-brandBlue to-blue-700 rounded-2xl p-5 md:p-6 text-white shadow-lg shadow-blue-500/20">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-xs font-medium text-blue-100">موجودی کیف پول</p>
+                                <p class="mt-1.5 flex items-baseline gap-2 leading-none">
+                                    <span id="wallet-balance-amount" class="text-2xl md:text-3xl font-black tracking-tight tabular-nums">••••••</span>
+                                    <span id="wallet-balance-currency" class="text-xs md:text-sm font-semibold opacity-80 hidden">تومان</span>
+                                </p>
+                            </div>
+                            <button type="button" onclick="toggleWalletBalance()" id="wallet-hide-toggle" class="w-10 h-10 shrink-0 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors" aria-label="نمایش/مخفی‌کردن موجودی">
+                                <i class="fa-solid fa-eye text-base"></i>
+                            </button>
+                        </div>
+                        <div class="mt-4 flex items-center justify-between gap-3 border-t border-white/20 pt-3">
+                            <div class="flex items-center gap-2 text-xs text-blue-100">
+                                <i class="fa-solid fa-wallet"></i>
+                                <span>شناسه کیف پول</span>
+                                <span class="font-bold tracking-wide text-white" dir="ltr">{{ $walletId }}</span>
+                            </div>
+                            <button type="button" onclick="copyWalletId('{{ $walletId }}')" id="wallet-copy-btn" class="w-9 h-9 flex items-center justify-center rounded-md hover:bg-white/10 transition-colors" aria-label="کپی شناسه کیف پول">
+                                <i class="fa-regular fa-copy text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    {{-- Segmented Tabs --}}
+                    <div class="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1">
+                        <button type="button" onclick="switchWalletTab('topup', this)" data-wallet-tab="topup" class="wallet-tab-btn h-11 rounded-lg text-[11px] md:text-sm font-bold transition-colors">افزایش موجودی</button>
+                        <button type="button" onclick="switchWalletTab('withdraw', this)" data-wallet-tab="withdraw" class="wallet-tab-btn h-11 rounded-lg text-[11px] md:text-sm font-bold transition-colors">برداشت وجه</button>
+                        <button type="button" onclick="switchWalletTab('history', this)" data-wallet-tab="history" class="wallet-tab-btn h-11 rounded-lg text-[11px] md:text-sm font-bold transition-colors">تراکنش‌ها</button>
+                    </div>
+
+                    {{-- Top Up / Withdraw shared panel --}}
+                    <div id="wallet-panel-form" class="bg-gray-50 rounded-2xl border border-gray-100 p-4 md:p-5 flex flex-col">
+                        <h3 id="wallet-form-title" class="text-sm md:text-base font-bold text-gray-800">افزایش موجودی کیف پول</h3>
+                        <p id="wallet-form-hint" class="mt-1 text-xs md:text-sm text-gray-500">مبلغ مورد نظر برای افزایش موجودی را انتخاب کنید.</p>
+                        <p id="wallet-form-eta" class="mt-2 text-[11px] md:text-xs font-bold text-brandBlue">واریز آنی به کیف پول</p>
+
+                        <div class="mt-4 grid grid-cols-3 gap-2" id="wallet-preset-grid"></div>
+
+                        <label class="mt-4 block">
+                            <span class="mb-1.5 block text-xs font-bold text-gray-500">مبلغ دلخواه</span>
+                            <div class="flex h-12 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 focus-within:border-brandBlue transition-colors">
+                                <input type="text" inputmode="numeric" id="wallet-custom-amount" placeholder="حداقل ۵۰,۰۰۰" class="h-full min-w-0 flex-1 bg-transparent text-sm md:text-base font-bold tabular-nums outline-none text-gray-800">
+                                <span class="text-xs font-medium text-gray-400 shrink-0">تومان</span>
+                            </div>
+                        </label>
+
+                        <div id="wallet-withdraw-fields" class="hidden">
+                            <label id="wallet-card-field" class="mt-4 block">
+                                <span class="mb-1.5 block text-xs font-bold text-gray-500">شماره کارت بانکی</span>
+                                <div class="flex h-12 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 focus-within:border-brandBlue transition-colors">
+                                    <i class="fa-solid fa-credit-card text-brandBlue shrink-0"></i>
+                                    <input type="text" inputmode="numeric" autocomplete="off" id="wallet-card-number" placeholder="•••• •••• •••• ••••" dir="ltr" class="h-full min-w-0 flex-1 bg-transparent text-sm md:text-base font-bold tabular-nums tracking-wide outline-none text-gray-800">
+                                </div>
+                            </label>
+
+                            <label id="wallet-sheba-field" class="mt-4 block">
+                                <span class="mb-1.5 block text-xs font-bold text-gray-500">شماره شبا</span>
+                                <div class="flex h-12 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 focus-within:border-brandBlue transition-colors">
+                                    <i class="fa-solid fa-building-columns text-brandBlue shrink-0"></i>
+                                    <span class="text-sm font-bold text-gray-400 shrink-0">IR</span>
+                                    <input type="text" inputmode="numeric" autocomplete="off" id="wallet-sheba-number" placeholder="•••• •••• •••• •••• •••" dir="ltr" class="h-full min-w-0 flex-1 bg-transparent text-sm md:text-base font-bold tabular-nums tracking-wide outline-none text-gray-800">
+                                </div>
+                            </label>
+
+                            <p class="mt-3 text-xs text-gray-500 leading-5">شماره کارت و شماره شبای واردشده باید به نام صاحب حساب کاربری باشد.</p>
+                        </div>
+
+                        <p id="wallet-form-error" class="mt-3 text-xs md:text-sm font-medium text-flashRed hidden"></p>
+
+                        <button type="button" onclick="openWalletConfirm()" class="mt-5 h-12 w-full flex items-center justify-center rounded-xl bg-brandBlue text-white text-sm font-bold shadow-md shadow-blue-500/20 hover:bg-blue-600 transition-colors">ادامه</button>
+                    </div>
+
+                    {{-- History panel --}}
+                    <div id="wallet-panel-history" class="hidden bg-white rounded-2xl border border-gray-100">
+                        <ul id="wallet-tx-list" class="divide-y divide-gray-100"></ul>
+                        <div id="wallet-tx-empty" class="hidden text-center py-16 flex-col items-center">
+                            <i class="fa-solid fa-wallet text-5xl text-gray-200 mb-4"></i>
+                            <p class="text-gray-500 text-sm mb-1">هنوز تراکنشی ثبت نشده است</p>
+                            <p class="text-gray-400 text-xs">با افزایش موجودی، اولین تراکنش شما اینجا نمایش داده می‌شود</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- ===== MODAL: WALLET CONFIRM ===== --}}
+            <div id="wallet-confirm-modal" class="fixed inset-0 bg-black/60 z-[80] hidden flex items-end md:items-center justify-center transition-opacity duration-300 opacity-0 md:px-4">
+                <div class="bg-white w-full md:max-w-sm rounded-t-2xl md:rounded-2xl flex flex-col shadow-2xl transform scale-95 transition-transform duration-300">
+                    <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                        <h3 id="wallet-confirm-title" class="font-bold text-gray-800 text-sm">تایید افزایش موجودی</h3>
+                        <button onclick="closeWalletConfirm()" class="text-gray-400 hover:text-gray-800"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    </div>
+                    <div class="p-5 flex flex-col gap-3 text-sm">
+                        <div class="flex items-start justify-between gap-4">
+                            <span id="wallet-confirm-amount-label" class="text-gray-500">مبلغ پرداختی</span>
+                            <span id="wallet-confirm-amount" class="font-bold tabular-nums text-gray-800"></span>
+                        </div>
+                        <div class="flex items-start justify-between gap-4">
+                            <span id="wallet-confirm-dest-label" class="text-gray-500">مبدأ</span>
+                            <span id="wallet-confirm-dest" class="font-bold text-gray-800"></span>
+                        </div>
+                        <div id="wallet-confirm-sheba-row" class="hidden flex items-start justify-between gap-4">
+                            <span class="text-gray-500">شماره شبا</span>
+                            <span id="wallet-confirm-sheba" class="font-bold text-gray-800" dir="ltr"></span>
+                        </div>
+                        <div class="flex items-start justify-between gap-4 pt-3 border-t border-gray-100">
+                            <span class="text-gray-500">موجودی جدید</span>
+                            <span id="wallet-confirm-new-balance" class="font-bold tabular-nums text-gray-800"></span>
+                        </div>
+                    </div>
+                    <div class="p-5 border-t border-gray-100 flex gap-3">
+                        <button id="wallet-confirm-submit-btn" onclick="commitWalletTx()" class="flex-1 bg-brandBlue text-white font-bold py-2.5 rounded-xl text-sm shadow-md hover:bg-blue-600 transition-colors">تایید</button>
+                        <button onclick="closeWalletConfirm()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-2.5 rounded-xl text-sm hover:bg-gray-200 transition-colors">انصراف</button>
+                    </div>
                 </div>
             </div>
 
@@ -750,7 +899,7 @@ function switchProfileTab(tabId, element) {
     const target = document.getElementById('sec-' + tabId);
     if (target) { target.classList.remove('hidden'); target.classList.add('flex', 'flex-col'); }
 
-    const titles = { orders:'تاریخچه سفارشات', lists:'لیست‌ها', comments:'دیدگاه‌ها و پرسش‌ها', addresses:'آدرس‌ها', messages:'پیام‌ها', recent:'بازدیدهای اخیر', account:'اطلاعات حساب کاربری' };
+    const titles = { orders:'تاریخچه سفارشات', wallet:'کیف پول', lists:'لیست‌ها', comments:'دیدگاه‌ها و پرسش‌ها', addresses:'آدرس‌ها', messages:'پیام‌ها', recent:'بازدیدهای اخیر', account:'اطلاعات حساب کاربری' };
     const sidebar = document.getElementById('profile-sidebar');
     const headerSummary = document.getElementById('mobile-header-summary');
     const headerInner = document.getElementById('mobile-header-inner');
@@ -907,6 +1056,355 @@ function setDefaultAddress(id) {
 }
 
 
-switchProfileTab('summary');
+// ==================================================================
+// WALLET — design/frontend prototype only.
+// All state (balance, transactions) lives in localStorage on this
+// browser only. Nothing here is sent to the server. Balance starts
+// from the real value already rendered in the sidebar; top-ups and
+// withdrawals only ever change the local mock copy. Replace this
+// block with real API calls once the wallet backend exists.
+// ==================================================================
+(function () {
+    const STORAGE_KEY = 'gp-wallet-mock-v1';
+    const PRESETS = [50000, 100000, 200000, 500000, 1000000, 2000000];
+    const MIN_AMOUNT = 50000;
+    const INITIAL_BALANCE = 0;
+
+    function toPersianDigits(str) {
+        return String(str).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+    }
+    function formatToman(n) {
+        return toPersianDigits(Number(n || 0).toLocaleString('en-US'));
+    }
+    function digitsOnly(v) {
+        return (v || '').replace(/[^\d]/g, '');
+    }
+    function maskCard(raw) {
+        const d = digitsOnly(raw).slice(0, 16);
+        if (d.length < 16) return d;
+        return d.slice(0, 4) + ' **** **** ' + d.slice(12);
+    }
+    function maskSheba(raw) {
+        const d = digitsOnly(raw).slice(0, 24);
+        if (d.length < 24) return 'IR' + d;
+        return 'IR' + d.slice(0, 4) + ' **** **** **** **** ' + d.slice(20);
+    }
+    function formatCardInput(v) {
+        return digitsOnly(v).slice(0, 16).replace(/(\d{4})(?=\d)/g, '$1 ');
+    }
+    function formatDate(ts) {
+        const d = new Date(ts);
+        const pad = n => String(n).padStart(2, '0');
+        return toPersianDigits(`${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`);
+    }
+
+    function loadState() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {}
+        return { balance: INITIAL_BALANCE, transactions: [], hidden: true };
+    }
+    function saveState() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+    }
+
+    let state = loadState();
+    let walletTab = 'topup';
+    let selectedPreset = PRESETS[1];
+    let walletConfirmPending = null;
+
+    function renderPresets() {
+        const grid = document.getElementById('wallet-preset-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+        PRESETS.forEach(n => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'h-12 rounded-lg border px-1 text-[11px] md:text-xs font-bold tabular-nums transition-colors ' +
+                (selectedPreset === n && !document.getElementById('wallet-custom-amount').value
+                    ? 'border-brandBlue bg-blue-50 text-brandBlue'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300');
+            btn.textContent = formatToman(n) + ' تومان';
+            btn.onclick = () => {
+                selectedPreset = n;
+                document.getElementById('wallet-custom-amount').value = '';
+                hideWalletError();
+                renderPresets();
+            };
+            grid.appendChild(btn);
+        });
+    }
+
+    function currentAmount() {
+        const custom = digitsOnly(document.getElementById('wallet-custom-amount').value);
+        if (custom) return Number(custom);
+        return selectedPreset || 0;
+    }
+
+    function hideWalletError() {
+        const el = document.getElementById('wallet-form-error');
+        el.classList.add('hidden');
+        el.textContent = '';
+    }
+    function showWalletError(msg) {
+        const el = document.getElementById('wallet-form-error');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    }
+
+    window.switchWalletTab = function (tab, btnEl) {
+        walletTab = tab;
+        hideWalletError();
+
+        document.querySelectorAll('.wallet-tab-btn').forEach(b => {
+            b.classList.remove('bg-brandBlue', 'text-white', 'shadow-sm');
+            b.classList.add('text-gray-500');
+        });
+        const active = btnEl || document.querySelector(`.wallet-tab-btn[data-wallet-tab="${tab}"]`);
+        if (active) {
+            active.classList.add('bg-brandBlue', 'text-white', 'shadow-sm');
+            active.classList.remove('text-gray-500');
+        }
+
+        const formPanel = document.getElementById('wallet-panel-form');
+        const historyPanel = document.getElementById('wallet-panel-history');
+        const withdrawFields = document.getElementById('wallet-withdraw-fields');
+
+        if (tab === 'history') {
+            formPanel.classList.add('hidden');
+            historyPanel.classList.remove('hidden');
+            historyPanel.classList.add('flex', 'flex-col');
+            renderWalletHistory();
+            return;
+        }
+
+        formPanel.classList.remove('hidden');
+        historyPanel.classList.add('hidden');
+        historyPanel.classList.remove('flex', 'flex-col');
+
+        const title = document.getElementById('wallet-form-title');
+        const hint = document.getElementById('wallet-form-hint');
+        const eta = document.getElementById('wallet-form-eta');
+
+        if (tab === 'topup') {
+            title.textContent = 'افزایش موجودی کیف پول';
+            hint.textContent = 'مبلغ مورد نظر برای افزایش موجودی را انتخاب کنید.';
+            eta.textContent = 'واریز آنی به کیف پول';
+            withdrawFields.classList.add('hidden');
+        } else {
+            title.textContent = 'برداشت وجه از کیف پول';
+            hint.textContent = 'مبلغ، شماره کارت و شماره شبای مقصد را وارد کنید.';
+            eta.textContent = 'برداشت وجه در ساعات کاری انجام می‌شود.';
+            withdrawFields.classList.remove('hidden');
+        }
+        renderPresets();
+    };
+
+    window.toggleWalletBalance = function () {
+        state.hidden = !state.hidden;
+        saveState();
+        renderBalance();
+    };
+
+    window.copyWalletId = function (walletId) {
+        const btn = document.getElementById('wallet-copy-btn');
+        const icon = btn.querySelector('i');
+        const done = () => {
+            icon.classList.remove('fa-regular', 'fa-copy');
+            icon.classList.add('fa-solid', 'fa-check');
+            showToast('شناسه کیف پول کپی شد', 'success');
+            setTimeout(() => { icon.classList.remove('fa-solid', 'fa-check'); icon.classList.add('fa-regular', 'fa-copy'); }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(walletId).then(done).catch(() => showToast(walletId, 'info'));
+        } else {
+            showToast(walletId, 'info');
+        }
+    };
+
+    window.openWalletConfirm = function () {
+        const amount = currentAmount();
+        hideWalletError();
+
+        if (!amount || amount < MIN_AMOUNT) {
+            showWalletError('حداقل مبلغ ' + formatToman(MIN_AMOUNT) + ' تومان است');
+            return;
+        }
+        if (walletTab === 'withdraw') {
+            if (amount > state.balance) {
+                showWalletError('موجودی کیف پول کافی نیست');
+                return;
+            }
+            const cardDigits = digitsOnly(document.getElementById('wallet-card-number').value);
+            if (cardDigits.length !== 16) {
+                showWalletError('شماره کارت باید ۱۶ رقم باشد');
+                return;
+            }
+            const shebaDigits = digitsOnly(document.getElementById('wallet-sheba-number').value);
+            if (shebaDigits.length !== 24) {
+                showWalletError('شماره شبا باید ۲۴ رقم باشد');
+                return;
+            }
+            walletConfirmPending = {
+                kind: 'withdraw',
+                amount,
+                card: maskCard(document.getElementById('wallet-card-number').value),
+                sheba: maskSheba(document.getElementById('wallet-sheba-number').value),
+            };
+        } else {
+            walletConfirmPending = { kind: 'topup', amount };
+        }
+
+        const newBalance = walletConfirmPending.kind === 'topup'
+            ? state.balance + amount
+            : state.balance - amount;
+
+        document.getElementById('wallet-confirm-title').textContent =
+            walletConfirmPending.kind === 'topup' ? 'تایید افزایش موجودی' : 'تایید برداشت وجه';
+        document.getElementById('wallet-confirm-amount-label').textContent =
+            walletConfirmPending.kind === 'topup' ? 'مبلغ واریزی' : 'مبلغ برداشت';
+        document.getElementById('wallet-confirm-amount').textContent = formatToman(amount) + ' تومان';
+        document.getElementById('wallet-confirm-dest-label').textContent =
+            walletConfirmPending.kind === 'topup' ? 'مقصد' : 'مقصد برداشت';
+        document.getElementById('wallet-confirm-dest').textContent =
+            walletConfirmPending.kind === 'topup' ? 'کیف پول درون‌برنامه' : 'کارت ' + walletConfirmPending.card;
+        const shebaRow = document.getElementById('wallet-confirm-sheba-row');
+        if (walletConfirmPending.kind === 'withdraw') {
+            document.getElementById('wallet-confirm-sheba').textContent = walletConfirmPending.sheba;
+            shebaRow.classList.remove('hidden');
+        } else {
+            shebaRow.classList.add('hidden');
+        }
+        document.getElementById('wallet-confirm-new-balance').textContent = formatToman(newBalance) + ' تومان';
+
+        const m = document.getElementById('wallet-confirm-modal'), i = m.querySelector('div');
+        m.classList.remove('hidden'); m.classList.add('flex');
+        setTimeout(() => { m.classList.remove('opacity-0'); i.classList.remove('scale-95'); }, 10);
+    };
+
+    window.closeWalletConfirm = function () {
+        const m = document.getElementById('wallet-confirm-modal'), i = m.querySelector('div');
+        m.classList.add('opacity-0'); i.classList.add('scale-95');
+        setTimeout(() => { m.classList.add('hidden'); m.classList.remove('flex'); }, 300);
+        walletConfirmPending = null;
+    };
+
+    function finishWalletTx() {
+        const { kind, amount, card, sheba } = walletConfirmPending;
+
+        if (kind === 'topup') {
+            state.balance += amount;
+            state.transactions.unshift({ id: 'tx-' + Date.now(), type: 'topup', amount, createdAt: Date.now() });
+            showToast('پرداخت با موفقیت انجام شد و موجودی کیف پول افزایش یافت', 'success');
+        } else {
+            if (amount > state.balance) { showToast('موجودی کیف پول کافی نیست', 'error'); closeWalletConfirm(); return; }
+            state.balance -= amount;
+            state.transactions.unshift({ id: 'tx-' + Date.now(), type: 'withdraw', amount, createdAt: Date.now(), destination: card, destinationSheba: sheba });
+            showToast('درخواست برداشت شما ثبت شد. مبلغ در ساعات کاری توسط GamePek به حساب شما منتقل می‌شود.', 'success');
+        }
+        saveState();
+        renderBalance();
+
+        document.getElementById('wallet-custom-amount').value = '';
+        document.getElementById('wallet-card-number').value = '';
+        document.getElementById('wallet-sheba-number').value = '';
+        selectedPreset = PRESETS[1];
+        closeWalletConfirm();
+        switchWalletTab('history');
+    }
+
+    // Top-up has no real gateway wired up yet: PaymentService/PaymentTransaction
+    // are hard-coupled to Order (order_id is NOT NULL) and there is no Wallet
+    // purpose branch. Until that backend work happens, top-up only simulates
+    // the "redirecting to gateway" transition below; it never leaves this page.
+    window.commitWalletTx = function () {
+        if (!walletConfirmPending) return;
+        const btn = document.getElementById('wallet-confirm-submit-btn');
+
+        if (walletConfirmPending.kind === 'topup') {
+            const originalLabel = btn.textContent;
+            btn.disabled = true;
+            btn.classList.add('opacity-70', 'cursor-not-allowed');
+            btn.textContent = 'در حال انتقال به درگاه پرداخت...';
+            setTimeout(() => {
+                finishWalletTx();
+                btn.disabled = false;
+                btn.classList.remove('opacity-70', 'cursor-not-allowed');
+                btn.textContent = originalLabel;
+            }, 900);
+        } else {
+            finishWalletTx();
+        }
+    };
+
+    function renderWalletHistory() {
+        const list = document.getElementById('wallet-tx-list');
+        const empty = document.getElementById('wallet-tx-empty');
+        list.innerHTML = '';
+        if (!state.transactions.length) {
+            empty.classList.remove('hidden');
+            empty.classList.add('flex');
+            return;
+        }
+        empty.classList.add('hidden');
+        empty.classList.remove('flex');
+        state.transactions.forEach(tx => {
+            const isIn = tx.type === 'topup';
+            const li = document.createElement('li');
+            li.className = 'flex items-center gap-3 px-4 md:px-5 py-3.5';
+            li.innerHTML = `
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${isIn ? 'bg-blue-50 text-brandBlue' : 'bg-gray-50 text-flashRed'}">
+                    <i class="fa-solid ${isIn ? 'fa-arrow-down-left' : 'fa-arrow-up-right'}"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                    <p class="truncate text-sm font-bold text-gray-800">${isIn ? 'افزایش موجودی' : 'برداشت وجه'}</p>
+                    <p class="truncate text-xs text-gray-400 mt-0.5">${formatDate(tx.createdAt)}${tx.destination ? ' · کارت ' + tx.destination : ''}${tx.destinationSheba ? ' · شبا ' + tx.destinationSheba : ''}</p>
+                </div>
+                <p class="text-sm font-black tabular-nums shrink-0 ${isIn ? 'text-brandBlue' : 'text-flashRed'}">${isIn ? '+' : '−'}${formatToman(tx.amount)}</p>
+            `;
+            list.appendChild(li);
+        });
+    }
+
+    function renderBalance() {
+        const sidebarEl = document.getElementById('wallet-sidebar-balance');
+        if (sidebarEl) sidebarEl.textContent = formatToman(state.balance);
+
+        const amountEl = document.getElementById('wallet-balance-amount');
+        const currencyEl = document.getElementById('wallet-balance-currency');
+        const icon = document.querySelector('#wallet-hide-toggle i');
+        if (!amountEl) return;
+        if (state.hidden) {
+            amountEl.textContent = '••••••';
+            currencyEl.classList.add('hidden');
+            if (icon) { icon.classList.remove('fa-eye'); icon.classList.add('fa-eye-slash'); }
+        } else {
+            amountEl.textContent = formatToman(state.balance);
+            currencyEl.classList.remove('hidden');
+            if (icon) { icon.classList.remove('fa-eye-slash'); icon.classList.add('fa-eye'); }
+        }
+    }
+
+    function initWallet() {
+        if (!document.getElementById('sec-wallet')) return;
+        renderBalance();
+        renderPresets();
+        switchWalletTab('topup');
+    }
+
+    document.addEventListener('DOMContentLoaded', initWallet);
+    if (document.readyState !== 'loading') initWallet();
+})();
+
+// Open a specific tab directly via ?tab=wallet (or #wallet), so the wallet
+// and other sections can be linked to from outside this page. Falls back to
+// the summary tab, which is the existing default.
+(function () {
+    const valid = ['summary', 'orders', 'wallet', 'addresses', 'messages', 'recent', 'account'];
+    const requested = (new URLSearchParams(location.search).get('tab') || location.hash.replace('#', '')).toLowerCase();
+    const tab = valid.includes(requested) ? requested : 'summary';
+    switchProfileTab(tab, document.querySelector(`.sidebar-link[data-tab="${tab}"]`));
+})();
 </script>
 @endpush

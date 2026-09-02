@@ -27,3 +27,7 @@ yarn-error.log
 *.zip
 *.rar
 *.sql
+/bootstrap/cache/*.php
+!/bootstrap/cache/.gitignore
+/graphify-out
+/wallet-grok

@@ -28,6 +28,7 @@ use App\Http\Controllers\Admin\ShippingMethodController as AdminShippingMethodCo
 use App\Http\Controllers\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Admin\TrustBadgeController as AdminTrustBadgeController;
 use App\Http\Controllers\Admin\UserController as AdminUserController;
+use App\Http\Controllers\Admin\WalletController as AdminWalletController;
 use App\Http\Controllers\MediaController;
 use Illuminate\Support\Facades\Route;
 
@@ -204,6 +205,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/{transaction}',          [AdminPaymentController::class, 'show'])->name('show');
             Route::post('/{transaction}/approve', [AdminPaymentController::class, 'approve'])->name('approve');
             Route::post('/{transaction}/reject',  [AdminPaymentController::class, 'reject'])->name('reject');
+        });
+
+        // ── Wallet ────────────────────────────────────────────────────────────
+        Route::prefix('wallet')->name('wallet.')->group(function () {
+            Route::get('/', [AdminWalletController::class, 'index'])->name('index');
         });
 
         // ── Users ─────────────────────────────────────────────────────────────

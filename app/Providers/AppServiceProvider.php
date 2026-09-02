@@ -8,6 +8,7 @@ use App\Policies\AddressPolicy;
 use App\Policies\OrderPolicy;
 use App\Services\Otp\OtpProviderInterface;
 use App\Services\Otp\Providers\MelipayamakOtpProvider;
+use App\Services\Otp\Providers\NullOtpProvider;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Gate;
@@ -39,7 +40,12 @@ class AppServiceProvider extends ServiceProvider
             'database.connections.mariadb.timezone' => '+00:00',
         ]);
 
-        $this->app->bind(OtpProviderInterface::class, fn () => new MelipayamakOtpProvider);
+        // Outside production, an unconfigured MELIPAYAMAK_API_KEY must not
+        // block login entirely -- fall back to a local-only provider that
+        // never sends real SMS (see NullOtpProvider docblock).
+        $this->app->bind(OtpProviderInterface::class, fn () => (
+            ! app()->isProduction() && (string) config('services.melipayamak.api_key') === ''
+        ) ? new NullOtpProvider : new MelipayamakOtpProvider);
     }
 
     public function boot(): void
