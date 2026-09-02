@@ -495,7 +495,7 @@
                     <h2 class="font-bold text-gray-800 text-lg">کیف پول</h2>
                 </div>
 
-                <div class="p-4 md:p-6 flex flex-col gap-5 max-w-xl">
+                <div class="p-4 md:p-6 flex flex-col gap-5 w-full">
 
                     {{-- Balance Card --}}
                     <div class="bg-gradient-to-l from-brandBlue to-blue-700 rounded-2xl p-5 md:p-6 text-white shadow-lg shadow-blue-500/20">
@@ -536,7 +536,7 @@
                         <p id="wallet-form-hint" class="mt-1 text-xs md:text-sm text-gray-500">مبلغ مورد نظر برای افزایش موجودی را انتخاب کنید.</p>
                         <p id="wallet-form-eta" class="mt-2 text-[11px] md:text-xs font-bold text-brandBlue">واریز آنی به کیف پول</p>
 
-                        <div class="mt-4 grid grid-cols-3 gap-2" id="wallet-preset-grid"></div>
+                        <div class="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2" id="wallet-preset-grid"></div>
 
                         <label class="mt-4 block">
                             <span class="mb-1.5 block text-xs font-bold text-gray-500">مبلغ دلخواه</span>
@@ -551,7 +551,7 @@
                                 <span class="mb-1.5 block text-xs font-bold text-gray-500">شماره کارت بانکی</span>
                                 <div class="flex h-12 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 focus-within:border-brandBlue transition-colors">
                                     <i class="fa-solid fa-credit-card text-brandBlue shrink-0"></i>
-                                    <input type="text" inputmode="numeric" autocomplete="off" id="wallet-card-number" placeholder="•••• •••• •••• ••••" dir="ltr" class="h-full min-w-0 flex-1 bg-transparent text-sm md:text-base font-bold tabular-nums tracking-wide outline-none text-gray-800">
+                                    <input type="text" inputmode="numeric" autocomplete="off" id="wallet-card-number" maxlength="19" placeholder="•••• •••• •••• ••••" dir="ltr" oninput="onWalletCardInput(this)" class="h-full min-w-0 flex-1 bg-transparent text-sm md:text-base font-bold tabular-nums tracking-wide outline-none text-gray-800">
                                 </div>
                             </label>
 
@@ -560,9 +560,15 @@
                                 <div class="flex h-12 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 focus-within:border-brandBlue transition-colors">
                                     <i class="fa-solid fa-building-columns text-brandBlue shrink-0"></i>
                                     <span class="text-sm font-bold text-gray-400 shrink-0">IR</span>
-                                    <input type="text" inputmode="numeric" autocomplete="off" id="wallet-sheba-number" placeholder="•••• •••• •••• •••• •••" dir="ltr" class="h-full min-w-0 flex-1 bg-transparent text-sm md:text-base font-bold tabular-nums tracking-wide outline-none text-gray-800">
+                                    <input type="text" inputmode="numeric" autocomplete="off" id="wallet-sheba-number" maxlength="29" placeholder="•••• •••• •••• •••• •••• ••••" dir="ltr" oninput="onWalletShebaInput(this)" class="h-full min-w-0 flex-1 bg-transparent text-sm md:text-base font-bold tabular-nums tracking-wide outline-none text-gray-800">
                                 </div>
                             </label>
+
+                            <div id="wallet-holder-row" class="mt-3 hidden items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                                <i id="wallet-holder-icon" class="fa-solid fa-user text-brandBlue shrink-0"></i>
+                                <span class="text-xs font-bold text-gray-500 shrink-0">صاحب حساب</span>
+                                <span id="wallet-holder-name" class="min-w-0 flex-1 truncate text-sm font-bold text-gray-800"></span>
+                            </div>
 
                             <p class="mt-3 text-xs text-gray-500 leading-5">شماره کارت و شماره شبای واردشده باید به نام صاحب حساب کاربری باشد.</p>
                         </div>
@@ -1092,6 +1098,44 @@ function setDefaultAddress(id) {
     function formatCardInput(v) {
         return digitsOnly(v).slice(0, 16).replace(/(\d{4})(?=\d)/g, '$1 ');
     }
+    function formatShebaInput(v) {
+        return digitsOnly(v).slice(0, 24).replace(/(\d{4})(?=\d)/g, '$1 ');
+    }
+
+    // Frontend prototype: no bank inquiry API exists yet. Resolves a deterministic
+    // placeholder holder name so the UI is complete; swap the body for a real
+    // card/IBAN inquiry call when the wallet backend ships.
+    const HOLDER_STUB_NAMES = ['محمد رضایی', 'زهرا احمدی', 'علی موسوی', 'فاطمه کریمی', 'حسین نجفی', 'مریم صادقی'];
+    function lookupHolderName(digits) {
+        let sum = 0;
+        for (let i = 0; i < digits.length; i++) sum += digits.charCodeAt(i);
+        return HOLDER_STUB_NAMES[sum % HOLDER_STUB_NAMES.length];
+    }
+
+    function renderHolderName() {
+        const row = document.getElementById('wallet-holder-row');
+        if (!row) return;
+        const card = digitsOnly(document.getElementById('wallet-card-number').value);
+        const sheba = digitsOnly(document.getElementById('wallet-sheba-number').value);
+        const source = sheba.length === 24 ? 'IR' + sheba : (card.length === 16 ? card : '');
+        if (!source) {
+            row.classList.add('hidden');
+            row.classList.remove('flex');
+            return;
+        }
+        document.getElementById('wallet-holder-name').textContent = lookupHolderName(source);
+        row.classList.remove('hidden');
+        row.classList.add('flex');
+    }
+
+    window.onWalletCardInput = function (el) {
+        el.value = formatCardInput(el.value);
+        renderHolderName();
+    };
+    window.onWalletShebaInput = function (el) {
+        el.value = formatShebaInput(el.value);
+        renderHolderName();
+    };
     function formatDate(ts) {
         const d = new Date(ts);
         const pad = n => String(n).padStart(2, '0');
@@ -1309,6 +1353,7 @@ function setDefaultAddress(id) {
         document.getElementById('wallet-custom-amount').value = '';
         document.getElementById('wallet-card-number').value = '';
         document.getElementById('wallet-sheba-number').value = '';
+        renderHolderName();
         selectedPreset = PRESETS[1];
         closeWalletConfirm();
         switchWalletTab('history');

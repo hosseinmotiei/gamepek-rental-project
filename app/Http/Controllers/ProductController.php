@@ -6,6 +6,9 @@ use App\Models\Banner;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\CatalogService;
+use App\Services\RentalPricingService;
+use App\Support\Rental\RentalCalendar;
+use App\Support\Rental\RentalItem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -59,7 +62,7 @@ class ProductController extends Controller
         return view('products.index', compact('products', 'categories', 'sidebarBanners', 'facets', 'selectedFacets'));
     }
 
-    public function show(string $slug): View
+    public function show(string $slug, RentalPricingService $pricing): View
     {
         $product = Product::where('slug', $slug)
             ->active()
@@ -74,7 +77,47 @@ class ProductController extends Controller
             ->limit(6)
             ->get();
 
-        return view('products.show', compact('product', 'relatedProducts'));
+        // Rentable products carry their rental facts in `attributes._rental`
+        // and get an extra booking panel. Everything else is an ordinary shop
+        // product and renders exactly as before, so `$rental` stays null and
+        // the view skips those sections entirely.
+        $rental = RentalItem::for($product);
+        $rentalCalendar = null;
+        $rentalSuggestion = null;
+        $rentalQuote = null;
+
+        if ($rental) {
+            $blocked = $rental->blocked();
+            $rentalCalendar = RentalCalendar::build($blocked);
+
+            // The default duration the panel opens on. Kept in sync with the
+            // first duration pill in partials/rental-panel.blade.php.
+            $defaultDays = 3;
+
+            $rentalSuggestion = RentalCalendar::suggestion($defaultDays, $blocked);
+
+            // Server-computed opening quote. The panel recomputes live in JS
+            // as the customer changes options, but the figure first painted
+            // -- and the only one that is authoritative -- comes from here.
+            $rentalQuote = $pricing->quote(
+                dailyRate: $rental->dailyRate(),
+                days: $defaultDays,
+                extraControllerDaily: $rental->extraControllerDaily(),
+                withExtraController: false,
+                gameFee: 0,
+                deliveryFee: $rental->deliveryFee(),
+                deposit: $rental->deposit(),
+            );
+        }
+
+        return view('products.show', compact(
+            'product',
+            'relatedProducts',
+            'rental',
+            'rentalCalendar',
+            'rentalSuggestion',
+            'rentalQuote',
+        ));
     }
 
     public function searchPage(Request $request): View

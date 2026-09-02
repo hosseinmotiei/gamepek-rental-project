@@ -63,18 +63,14 @@
 
             {{-- Thumbnails (Desktop) --}}
             @if($imageCount > 1)
-            <div class="hidden md:flex gap-3 w-full px-4 overflow-x-auto hide-scrollbar">
+            <div class="flex gap-3 w-full px-4 overflow-x-auto hide-scrollbar">
                 @foreach($images as $i => $img)
-                @if($i < 4)
-                <div onclick="switchImage('{{ product_image_url(null, $img) }}', {{ $i + 1 }})"
-                     class="w-16 h-16 rounded-xl border-2 {{ $i === 0 ? 'border-brandBlue' : 'border-gray-200 hover:border-gray-400' }} p-1 cursor-pointer shrink-0 transition-colors thumb-btn">
+                <button type="button"
+                        onclick="switchImage('{{ product_image_url(null, $img) }}', {{ $i + 1 }})"
+                        aria-label="تصویر {{ persian_number($i + 1) }}"
+                        class="w-16 h-16 rounded-xl border-2 {{ $i === 0 ? 'border-brandBlue' : 'border-gray-200 hover:border-gray-400' }} p-1 cursor-pointer shrink-0 transition-colors thumb-btn">
                     <img src="{{ product_image_url(null, $img) }}" alt="{{ $product->title_fa }}" loading="lazy" decoding="async" width="64" height="64" class="w-full h-full object-contain">
-                </div>
-                @elseif($i === 4)
-                <div class="w-16 h-16 rounded-xl border border-gray-200 p-1 cursor-pointer shrink-0 hover:border-gray-400 flex items-center justify-center text-gray-400 text-xl">
-                    <i class="fa-solid fa-ellipsis"></i>
-                </div>
-                @endif
+                </button>
                 @endforeach
             </div>
             @endif
@@ -181,8 +177,21 @@
             </script>
             @endif
 
+            @if($rental)
+            @include('partials.rental-panel')
+            @endif
+
+            @if($rental)
+            {{-- The quote box lives in the desktop sidebar, which mobile never
+                 renders; without this a phone user sees no total and no way to
+                 reserve. --}}
+            <div id="rental-quote-mobile" class="lg:hidden mt-6">
+                @include('partials.rental-quote-box')
+            </div>
+            @endif
+
             {{-- Mobile Price & Add to Cart --}}
-            <div class="lg:hidden">
+            <div class="{{ $rental ? 'hidden' : 'lg:hidden' }}">
                 @if($product->sale_price && $product->sale_price < $product->price)
                 <div class="flex items-center gap-2 mb-1">
                     <span class="bg-flashRed text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{{ $product->discount_percent }}٪</span>
@@ -233,6 +242,9 @@
                 </div>
                 @endif
 
+                @if($rental)
+                @include('partials.rental-quote-box')
+                @else
                 <div class="border-t border-gray-200 pt-4 mb-4">
                     @if($product->sale_price && $product->sale_price < $product->price)
                     <div class="flex items-center gap-2 mb-1">
@@ -263,9 +275,14 @@
                 @else
                 <button disabled class="w-full bg-gray-200 text-gray-400 font-bold py-3.5 rounded-xl cursor-not-allowed text-sm">ناموجود</button>
                 @endif
+                @endif
             </div>
         </div>
     </div>
+
+    @if($rental)
+    @include('partials.rental-details')
+    @endif
 
     {{-- Section Divider --}}
     <div class="w-full h-2 bg-gray-100 my-6 md:my-10 -mx-0"></div>
@@ -314,14 +331,23 @@
                 </div>
             </div>
         </div>
-        @if($product->attributes && count($product->attributes) > 0)
+        @php
+            // The spec table renders flat label => value pairs. Keys prefixed
+            // with "_" hold structured data for a specific feature (rental
+            // availability, pricing, package contents) rather than a
+            // displayable spec, so they are skipped here instead of being
+            // stringified into the table.
+            $specAttributes = collect($product->attributes ?? [])
+                ->reject(fn ($value, $key) => str_starts_with((string) $key, '_'));
+        @endphp
+        @if($specAttributes->isNotEmpty())
         <div class="mt-6">
             <div class="flex items-center gap-3 mb-4">
                 <div class="w-1 h-6 bg-brandBlue rounded-full"></div>
                 <h3 class="font-bold text-gray-800 text-base">مشخصات فنی</h3>
             </div>
             <div class="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-50">
-                @foreach($product->attributes as $key => $value)
+                @foreach($specAttributes as $key => $value)
                 <div class="flex items-center px-5 py-3.5 {{ $loop->even ? 'bg-gray-50/50' : 'bg-white' }}">
                     <span class="w-2/5 text-xs md:text-sm text-gray-500 font-medium">{{ $key }}</span>
                     <span class="w-3/5 text-xs md:text-sm font-bold text-gray-800">{{ is_array($value) ? implode('، ', $value) : $value }}</span>
@@ -353,6 +379,25 @@
      this page's own content wrapper (see layouts/app.blade.php). --}}
 @push('fixed-bars')
 <div class="lg:hidden fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 z-40 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] mb-[70px]">
+    @if($rental)
+    <div class="flex items-center justify-between p-4 gap-3">
+        @if($rental->isRentable())
+        <a href="#rental-quote-mobile" class="bg-brandBlue text-white text-sm font-bold py-3 px-6 rounded-xl shadow-lg shadow-blue-500/20 shrink-0">
+            <i class="fa-solid fa-calendar-check ml-1"></i> ادامه رزرو
+        </a>
+        @else
+        <button disabled class="bg-gray-200 text-gray-400 text-sm font-bold py-3 px-6 rounded-xl cursor-not-allowed shrink-0">فعلاً قابل اجاره نیست</button>
+        @endif
+        <div class="flex flex-col items-end min-w-0">
+            @if($rental->isRentable())
+            <span class="text-lg font-black text-brandDark truncate"><span data-quote="payable">{{ persian_number($rentalQuote->payableNow) }}</span> <span class="text-[10px] font-normal text-gray-500">تومان</span></span>
+            <span class="text-[10px] text-gray-500"><span data-quote="days">{{ persian_number($rentalQuote->days) }}</span> روز اجاره</span>
+            @else
+            <span class="text-lg font-black text-brandDark">{{ persian_number($rental->dailyRate()) }} <span class="text-[10px] font-normal text-gray-500">تومان / روز</span></span>
+            @endif
+        </div>
+    </div>
+    @else
     @if($product->isInStock() && isset($product->stock) && $product->stock <= 3)
     <div class="bg-red-50 text-flashRed text-[10px] font-bold py-1.5 px-4 text-center border-b border-red-100">
         <i class="fa-solid fa-fire mr-1"></i> تنها {{ $product->stock }} عدد در انبار باقی مانده
@@ -375,6 +420,7 @@
             @endif
         </div>
     </div>
+    @endif
 </div>
 @endpush
 

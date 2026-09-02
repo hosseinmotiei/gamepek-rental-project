@@ -6,6 +6,7 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Coupon;
 use App\Models\Product;
+use App\Support\Rental\RentalItem;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Session;
 
@@ -45,6 +46,15 @@ class CartService
 
         if (!$product) {
             throw new \Exception('محصول پیدا نشد.', 404);
+        }
+
+        // A rentable device is priced by duration and taken one at a time, so
+        // it can never go through the shop's buy flow -- doing so would sell a
+        // console for one day's rent and skip the deposit entirely. Guarded
+        // here rather than in each view because every add path (product page,
+        // catalog card, mini-cart, API) routes through addItem().
+        if (RentalItem::supports($product)) {
+            throw new \Exception('این دستگاه اجاره‌ای است و از طریق سبد خرید قابل تهیه نیست. از صفحه محصول رزرو کنید.', 422);
         }
 
         if ($product->effective_price === null) {

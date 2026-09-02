@@ -14,6 +14,10 @@
 --}}
 @php
     $variant = $variant ?? 'default';
+
+    // A rentable device is priced per day and reserved from its own page, so
+    // it never shows a buy price or an add-to-cart button here.
+    $cardRental = \App\Support\Rental\RentalItem::for($product);
 @endphp
 <div class="bg-white rounded-2xl p-3 md:p-4 shadow-sm border border-gray-100 flex flex-col group relative min-w-0 overflow-hidden">
 
@@ -35,7 +39,20 @@
     </a>
 
     <div class="mt-auto pt-4 border-t border-gray-50">
-        @if($product->stock_status === 'in_stock')
+        @if($cardRental)
+            <div class="text-left mb-3">
+                <span class="text-base md:text-lg font-bold text-brandDark whitespace-nowrap">{{ persian_number($cardRental->dailyRate()) }}</span>
+                <span class="text-[10px] md:text-xs text-gray-500"> تومان / روز</span>
+            </div>
+            @if($cardRental->isRentable())
+            <a href="{{ route('products.show', $product->slug) }}"
+               class="block text-center w-full font-bold py-2 rounded-xl transition-colors text-xs md:text-sm bg-brandGray text-brandBlue group-hover:bg-brandBlue group-hover:text-white">
+                <i class="fa-solid fa-calendar-check ml-1"></i> مشاهده و رزرو
+            </a>
+            @else
+            <span class="block text-center text-xs md:text-sm font-bold text-gray-400 py-2">فعلاً قابل اجاره نیست</span>
+            @endif
+        @elseif($product->stock_status === 'in_stock')
             <div class="text-left mb-3">
                 @if($product->sale_price)
                     <span class="text-xs text-gray-400 line-through block text-right">{{ persian_number($product->price) }} تومان</span>

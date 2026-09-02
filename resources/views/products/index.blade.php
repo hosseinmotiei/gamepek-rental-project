@@ -175,6 +175,10 @@
                 @php
                     $price = $product->sale_price ?? $product->price;
                     $image = product_image_url($product);
+
+                    // Rentable devices are priced per day and reserved from
+                    // their own page -- never bought from the grid.
+                    $cardRental = \App\Support\Rental\RentalItem::for($product);
                 @endphp
                 <div class="product-card flex flex-col p-4 sm:border border-gray-100 sm:rounded-xl group relative hover:shadow-lg transition-shadow bg-white h-full">
 
@@ -197,13 +201,25 @@
                             <div class="flex items-center justify-between mb-3">
                             </div>
 
-                            @if($product->stock_quantity > 0 && $product->stock_quantity <= 2)
+                            @if(!$cardRental && $product->stock_quantity > 0 && $product->stock_quantity <= 2)
                                 <span class="text-[10px] text-flashRed font-bold mb-2 block">تنها {{ persian_number($product->stock_quantity) }} عدد در انبار باقی مانده</span>
                             @endif
                         </div>
 
                         <div class="mt-4 pt-2 pl-12 sm:pl-0 border-t border-gray-50 md:border-none md:pt-0">
-                            @if($product->stock_status === 'in_stock')
+                            @if($cardRental)
+                                <div class="flex justify-end items-baseline gap-1 mb-2">
+                                    <span class="text-base md:text-lg font-bold text-gray-900">{{ persian_number($cardRental->dailyRate()) }}</span>
+                                    <span class="text-[10px] text-gray-600">تومان / روز</span>
+                                </div>
+                                @if($cardRental->isRentable())
+                                <a href="{{ route('products.show', $product->slug) }}" class="w-full text-brandBlue font-bold text-xs border border-brandBlue hover:bg-blue-50 py-2 rounded-lg transition-colors items-center justify-center gap-2 opacity-0 group-hover:opacity-100 sm:flex hidden">
+                                    <i class="fa-solid fa-calendar-check"></i> مشاهده و رزرو
+                                </a>
+                                @else
+                                <span class="block text-center text-xs font-bold text-gray-400 py-2">فعلاً قابل اجاره نیست</span>
+                                @endif
+                            @elseif($product->stock_status === 'in_stock')
                                 @if($product->sale_price && $product->discount_percent > 0)
                                     <div class="flex justify-between items-center mb-1">
                                         <span class="bg-flashRed text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{{ persian_number($product->discount_percent) }}٪</span>
@@ -227,7 +243,7 @@
                         </div>
                     </div>
 
-                    @if($product->stock_status === 'in_stock')
+                    @if(!$cardRental && $product->stock_status === 'in_stock')
                         <button onclick="addToCart({{ $product->id }})" class="absolute bottom-4 left-4 w-8 h-8 rounded-full border border-gray-200 text-brandBlue flex sm:hidden items-center justify-center bg-gray-50 hover:bg-brandBlue hover:text-white hover:border-brandBlue transition-colors">
                             <i class="fa-solid fa-plus"></i>
                         </button>

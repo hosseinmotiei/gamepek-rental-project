@@ -37,6 +37,25 @@ return [
         'guest_session_key' => 'guest_cart_id',
     ],
 
+    'pricing' => [
+        // Duration discount tiers, read by RentalPricingService.
+        //
+        // Keyed by minimum rental length in days => discount fraction. The
+        // longest qualifying tier wins, so declaration order does not matter.
+        //
+        // These values are carried over from the `Grok-show` rental
+        // prototype, where they drove a price preview. They are NOT a
+        // confirmed commercial policy — rental pricing has not been signed
+        // off by the owner. Treat them as a placeholder to be replaced, and
+        // note that the deposit is deliberately not discounted: it is a
+        // refundable hold, not a charge.
+        'duration_discounts' => [
+            7 => 0.05,
+            14 => 0.10,
+            30 => 0.15,
+        ],
+    ],
+
     'pagination' => [
         'products_per_page' => 20,
         'orders_per_page' => 10,
