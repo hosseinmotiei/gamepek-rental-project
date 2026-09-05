@@ -25,9 +25,7 @@ class RentalItem
     /**
      * @param  array<string, mixed>  $data  the product's `_rental` payload
      */
-    private function __construct(private readonly array $data)
-    {
-    }
+    private function __construct(private readonly array $data) {}
 
     /**
      * Whether this product carries rental data, i.e. can be rented rather
@@ -117,7 +115,7 @@ class RentalItem
     }
 
     /**
-     * @return array<string, string>  label => value
+     * @return array<string, string> label => value
      */
     public function conditionFacts(): array
     {

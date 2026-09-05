@@ -12,15 +12,15 @@ class ActivityLogController extends Controller
 {
     public function index(Request $request): View
     {
-        abort_if(!auth()->user()->can('view_activity_logs'), 403);
+        abort_if(! auth()->user()->can('view_activity_logs'), 403);
 
         $query = ActivityLog::with('admin')->latest();
 
         if ($search = $request->get('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('action', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%")
-                  ->orWhereHas('admin', fn($u) => $u->where('full_name', 'like', "%{$search}%")->orWhere('mobile', 'like', "%{$search}%"));
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhereHas('admin', fn ($u) => $u->where('full_name', 'like', "%{$search}%")->orWhere('mobile', 'like', "%{$search}%"));
             });
         }
 
@@ -55,8 +55,9 @@ class ActivityLogController extends Controller
 
     public function show(ActivityLog $activityLog): View
     {
-        abort_if(!auth()->user()->can('view_activity_logs'), 403);
+        abort_if(! auth()->user()->can('view_activity_logs'), 403);
         $activityLog->load('admin');
+
         return view('admin.activity-logs.show', compact('activityLog'));
     }
 }

@@ -49,6 +49,47 @@
     </div>
 
     @if($rental->isRentable())
+    {{-- The rental window is chosen ONCE, in the search bar (home page and
+         the catalog listing), and travels here in the query string. There is
+         deliberately no second date picker on this page: two pickers meant two
+         places to disagree about the same window. --}}
+    @php
+        $selectedFrom = request('from');
+        $selectedTo = request('to');
+        $selectedDays = $selectedFrom && $selectedTo
+            ? \App\Support\Rental\Jalali::diffDays($selectedFrom, $selectedTo)
+            : null;
+
+        // Show the window that will actually be reserved. RentalReservation
+        // counts rental days inclusively (end = start + days - 1), so echoing
+        // the raw `to` from the search bar would promise one day more than
+        // the reservation holds.
+        $reservedTo = $selectedFrom && $selectedDays > 0
+            ? \App\Support\Rental\Jalali::addDays($selectedFrom, $selectedDays - 1)
+            : null;
+    @endphp
+
+    <div class="mb-5" id="rental-window" data-from="{{ $selectedFrom }}" data-to="{{ $selectedTo }}" data-days="{{ $selectedDays }}">
+        @if($selectedFrom && $selectedDays > 0)
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-brandLightBlue border border-blue-100 px-4 py-3">
+            <div class="text-xs md:text-sm">
+                <span class="text-gray-500">بازه انتخابی:</span>
+                <span class="font-bold text-gray-800">
+                    {{ \App\Support\Rental\Jalali::formatLong($selectedFrom) }} تا {{ \App\Support\Rental\Jalali::formatLong($reservedTo) }}
+                </span>
+                <span class="text-gray-500">({{ persian_number($selectedDays) }} روز)</span>
+            </div>
+            <a href="{{ route('products.search', array_filter(request()->only('city', 'from', 'to'))) }}"
+               class="text-xs font-bold text-brandBlue hover:text-blue-700">تغییر تاریخ</a>
+        </div>
+        @else
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+            <span class="text-xs md:text-sm text-amber-800">برای رزرو، ابتدا تاریخ شروع و پایان اجاره را انتخاب کنید.</span>
+            <a href="{{ route('products.index') }}#rental-search"
+               class="text-xs font-bold text-amber-900 underline">انتخاب تاریخ</a>
+        </div>
+        @endif
+    </div>
     {{-- Duration --}}
     <div class="mb-5">
         <p class="text-xs font-bold text-gray-600 mb-2">مدت اجاره</p>
@@ -183,6 +224,7 @@
 
             row('controller', controller > 0);
             row('discount', discount > 0);
+
         }
 
         // Pills are mutually exclusive within their own group, so selecting
@@ -207,13 +249,76 @@
         bind('.rental-ctrl-pill', p => { state.controllers = +p.dataset.rentalControllers; });
         bind('.rental-delivery-pill', p => { state.delivery = p.dataset.rentalDelivery; });
 
-        // The reservation flow has no backend yet (the rental domain is still
-        // being designed), so the CTA states that plainly rather than leading
-        // into a checkout that would price a rental as a shop purchase.
+        // Reservation. Two calls to the two existing endpoints -- open the
+        // application, then reserve into it -- and then straight to the
+        // application page, which is where the rest of the chain lives.
+        // No price is sent: RentalPricingService re-quotes server-side.
+        const windowEl = document.getElementById('rental-window');
+        const reserveConfig = {
+            authenticated: @json(auth()->check()),
+            loginUrl: @json(route('auth.login')),
+            storeUrl: @json(route('rental.applications.store')),
+            searchUrl: @json(route('products.search')),
+            productId: @json($product->id),
+            from: windowEl ? windowEl.dataset.from : '',
+            windowDays: windowEl && windowEl.dataset.days ? +windowEl.dataset.days : 0,
+        };
+
+        // A chosen window overrides the duration pills: the customer already
+        // said which days they want.
+        if (reserveConfig.windowDays > 0) {
+            state.days = reserveConfig.windowDays;
+            render();
+        }
+
         document.querySelectorAll('.rental-reserve-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.rental-reserve-note')
-                    .forEach(note => note.classList.remove('hidden'));
+            btn.addEventListener('click', async () => {
+                if (!reserveConfig.authenticated) {
+                    // Come back to this exact product after logging in.
+                    window.location.href = reserveConfig.loginUrl + '?redirect=' + encodeURIComponent(window.location.pathname);
+                    return;
+                }
+
+                if (!reserveConfig.from) {
+                    showToast('ابتدا تاریخ شروع و پایان اجاره را انتخاب کنید.', 'error');
+                    window.location.href = reserveConfig.searchUrl;
+                    return;
+                }
+
+                const original = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> در حال ثبت رزرو…';
+
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': CSRF_TOKEN,
+                };
+
+                try {
+                    const opened = await fetch(reserveConfig.storeUrl, { method: 'POST', headers })
+                        .then(r => r.json());
+                    if (!opened.success) throw new Error(opened.message || 'ایجاد درخواست اجاره ممکن نشد.');
+
+                    const reserveUrl = BASE_URL + '/rental/applications/' + opened.application_number + '/reserve';
+                    const reserved = await fetch(reserveUrl, {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({
+                            product_id: reserveConfig.productId,
+                            start_date: reserveConfig.from,
+                            days: state.days,
+                            extra_controller: state.controllers === 2,
+                        }),
+                    }).then(r => r.json());
+                    if (!reserved.success) throw new Error(reserved.message || 'ثبت رزرو ممکن نشد.');
+
+                    window.location.href = BASE_URL + '/rental/applications/' + opened.application_number;
+                } catch (e) {
+                    showToast(e.message, 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = original;
+                }
             });
         });
 

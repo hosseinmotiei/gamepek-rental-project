@@ -3,9 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Generic catalog item — the foundation a rental item will be built on.
@@ -54,6 +54,12 @@ class Product extends Model
         return $this->hasMany(ProductOptionGroup::class)->orderBy('sort_order');
     }
 
+    /** Rental reservations against this item -- the date-availability seam. */
+    public function rentalReservations(): HasMany
+    {
+        return $this->hasMany(RentalReservation::class);
+    }
+
     public function cartItems(): HasMany
     {
         return $this->hasMany(CartItem::class);
@@ -83,9 +89,10 @@ class Product extends Model
 
     public function getDiscountPercentAttribute(): int
     {
-        if (!$this->price || !$this->sale_price || $this->sale_price >= $this->price) {
+        if (! $this->price || ! $this->sale_price || $this->sale_price >= $this->price) {
             return 0;
         }
+
         return (int) round((($this->price - $this->sale_price) / $this->price) * 100);
     }
 
@@ -143,13 +150,13 @@ class Product extends Model
 
         return $query->where(function ($q) use ($pattern) {
             $q->where('title_fa', 'LIKE', $pattern)
-              ->orWhere('title_en', 'LIKE', $pattern)
-              ->orWhere('slug', 'LIKE', $pattern)
-              ->orWhere('sku', 'LIKE', $pattern)
-              ->orWhereHas('category', function ($categoryQuery) use ($pattern) {
-                  $categoryQuery->where('name_fa', 'LIKE', $pattern)
-                                ->orWhere('slug', 'LIKE', $pattern);
-              });
+                ->orWhere('title_en', 'LIKE', $pattern)
+                ->orWhere('slug', 'LIKE', $pattern)
+                ->orWhere('sku', 'LIKE', $pattern)
+                ->orWhereHas('category', function ($categoryQuery) use ($pattern) {
+                    $categoryQuery->where('name_fa', 'LIKE', $pattern)
+                        ->orWhere('slug', 'LIKE', $pattern);
+                });
         });
     }
 }

@@ -20,15 +20,15 @@ class AdminLoginController extends Controller
     public function login(Request $request)
     {
         $credentials = $request->validate([
-            'email'    => ['required', 'email', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
             'password' => ['required', 'string'],
         ], [
-            'email.required'    => 'ایمیل الزامی است.',
-            'email.email'       => 'فرمت ایمیل صحیح نیست.',
+            'email.required' => 'ایمیل الزامی است.',
+            'email.email' => 'فرمت ایمیل صحیح نیست.',
             'password.required' => 'رمز عبور الزامی است.',
         ]);
 
-        if (!Auth::attempt(['email' => $credentials['email'], 'password' => $credentials['password']], $request->boolean('remember'))) {
+        if (! Auth::attempt(['email' => $credentials['email'], 'password' => $credentials['password']], $request->boolean('remember'))) {
             return back()
                 ->withErrors(['email' => 'ایمیل یا رمز عبور اشتباه است.'])
                 ->withInput($request->only('email'));
@@ -36,15 +36,17 @@ class AdminLoginController extends Controller
 
         $user = Auth::user();
 
-        if (!$user->isActive()) {
+        if (! $user->isActive()) {
             Auth::logout();
+
             return back()
                 ->withErrors(['email' => 'حساب کاربری شما مسدود شده است.'])
                 ->withInput($request->only('email'));
         }
 
-        if (!$user->hasAnyRole(config('rental.admin.roles'))) {
+        if (! $user->hasAnyRole(config('rental.admin.roles'))) {
             Auth::logout();
+
             return back()
                 ->withErrors(['email' => 'شما دسترسی به پنل مدیریت ندارید.'])
                 ->withInput($request->only('email'));

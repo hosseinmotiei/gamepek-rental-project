@@ -189,6 +189,30 @@
         </a>
         @endcan
 
+        <div class="my-2 border-t border-white/10"></div>
+        <p class="text-[10px] text-white/30 px-3 mb-1 uppercase tracking-widest">اجاره</p>
+        @can('view_rental_applications')
+        <a href="{{ route('admin.rental-applications.index') }}"
+           class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white text-sm {{ request()->routeIs('admin.rental-applications.*') ? 'active' : '' }}">
+            <i class="fa-solid fa-file-signature w-5 text-center text-blue-300"></i>
+            <span>درخواست‌های اجاره</span>
+        </a>
+        @endcan
+        @can('view_verifications')
+        <a href="{{ route('admin.verifications.index') }}"
+           class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white text-sm {{ request()->routeIs('admin.verifications.*') ? 'active' : '' }}">
+            <i class="fa-solid fa-id-card w-5 text-center text-blue-300"></i>
+            <span>احراز هویت</span>
+        </a>
+        @endcan
+        @can('view_audit_events')
+        <a href="{{ route('admin.audit-events.index') }}"
+           class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white text-sm {{ request()->routeIs('admin.audit-events.*') ? 'active' : '' }}">
+            <i class="fa-solid fa-shield-halved w-5 text-center text-blue-300"></i>
+            <span>لاگ ممیزی</span>
+        </a>
+        @endcan
+
         @can('view_reports')
         <a href="{{ route('admin.reports.index') }}"
            class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white text-sm {{ request()->routeIs('admin.reports.*') ? 'active' : '' }}">

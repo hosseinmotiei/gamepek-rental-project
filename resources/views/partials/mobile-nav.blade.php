@@ -21,8 +21,11 @@
             <span class="text-[10px] font-bold">سبد خرید</span>
         </a>
 
-        <!-- Search (mobile only) -->
-        <button onclick="document.querySelector('.md\\:hidden input[type=text]')?.focus()" class="flex flex-col items-center gap-1 text-gray-500 hover:text-brandBlue transition-colors w-1/5">
+        {{-- Search (mobile only). Focuses the mobile search field by id: the
+             old selector grabbed the first `input[type=text]` inside any
+             `.md:hidden` element, which is whatever markup happens to come
+             first on the page -- often the categories modal's own box. --}}
+        <button onclick="focusMobileSearch()" class="flex flex-col items-center gap-1 text-gray-500 hover:text-brandBlue transition-colors w-1/5">
             <i class="fa-solid fa-magnifying-glass text-xl mb-0.5"></i>
             <span class="text-[10px] font-bold">جستجو</span>
         </button>
@@ -41,3 +44,12 @@
         @endauth
     </div>
 </nav>
+
+<script>
+    function focusMobileSearch() {
+        const input = document.getElementById('mobile-search-input');
+        if (!input) return;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        input.focus();
+    }
+</script>

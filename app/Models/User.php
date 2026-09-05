@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BankAccountState;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -9,7 +10,7 @@ use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, HasRoles;
+    use HasFactory, HasRoles, Notifiable;
 
     protected $fillable = [
         'full_name', 'mobile', 'email', 'password',
@@ -57,6 +58,44 @@ class User extends Authenticatable
     public function conversations()
     {
         return $this->hasMany(Conversation::class);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Rental verification chain.
+    //
+    // Model::shouldBeStrict() is on outside production, which enables
+    // preventLazyLoading -- every one of these must be eager-loaded before a
+    // Blade template touches it (`$user->loadMissing('identity')`).
+    // ──────────────────────────────────────────────────────────────────────
+
+    public function identity()
+    {
+        return $this->hasOne(UserIdentity::class);
+    }
+
+    public function bankAccounts()
+    {
+        return $this->hasMany(BankAccount::class);
+    }
+
+    public function verifiedBankAccounts()
+    {
+        return $this->hasMany(BankAccount::class)->where('state', BankAccountState::Verified->value);
+    }
+
+    public function rentalApplications()
+    {
+        return $this->hasMany(RentalApplication::class);
+    }
+
+    public function verificationMedia()
+    {
+        return $this->hasMany(VerificationMedia::class);
+    }
+
+    public function consents()
+    {
+        return $this->hasMany(Consent::class);
     }
 
     public function scopeActive($query)

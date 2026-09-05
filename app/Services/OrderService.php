@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ShippingMethod;
+use App\Services\Audit\AuditLogger;
 use Illuminate\Support\Facades\DB;
 
 class OrderService
@@ -166,9 +167,22 @@ class OrderService
         });
     }
 
+    /**
+     * $trackingCode is the gateway's own reference (RRN). It was previously
+     * accepted and silently discarded: the parameter was never captured into
+     * the DB::transaction closure below, and `orders` had no column to receive
+     * it. It is now denormalised onto `orders.payment_tracking_code` (the
+     * authoritative copy stays on `payment_transactions.tracking_code`) and
+     * recorded in the audit trail.
+     *
+     * Three callers, all of which must keep funnelling through here rather
+     * than writing `orders` directly: CheckoutController::paymentCallback via
+     * PaymentService (public), Admin\PaymentController::approve (admin), and
+     * PaymentReconciler (scheduled).
+     */
     public function markAsPaid(Order $order, ?string $trackingCode = null): void
     {
-        DB::transaction(function () use ($order) {
+        DB::transaction(function () use ($order, $trackingCode) {
             // BUG-001: a stale in-memory $order->payment_status read is not
             // sufficient against replay (callback retries, admin double
             // click, concurrent requests) -- re-fetch and lock the
@@ -201,6 +215,7 @@ class OrderService
                 'status' => 'paid',
                 'payment_status' => 'paid',
                 'paid_at' => now(),
+                'payment_tracking_code' => $trackingCode,
             ]);
 
             foreach ($locked->items as $item) {
@@ -223,6 +238,17 @@ class OrderService
 
             // Clear the user's cart
             $locked->user->cart?->items()->delete();
+
+            AuditLogger::log(
+                action: 'order.paid',
+                resourceType: 'Order',
+                resourceId: $locked->id,
+                context: [
+                    'order_number' => $locked->order_number,
+                    'amount' => $locked->total,
+                    'tracking_code' => $trackingCode,
+                ],
+            );
 
             $order->setRawAttributes($locked->getAttributes(), true);
         });

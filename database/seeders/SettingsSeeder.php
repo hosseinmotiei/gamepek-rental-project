@@ -16,13 +16,13 @@ class SettingsSeeder extends Seeder
                 Setting::firstOrCreate(
                     ['group' => $group, 'key' => $item['key']],
                     [
-                        'label'       => $item['label'],
-                        'value'       => $item['value'] ?? null,
-                        'type'        => $item['type'] ?? 'text',
-                        'options'     => $item['options'] ?? null,
+                        'label' => $item['label'],
+                        'value' => $item['value'] ?? null,
+                        'type' => $item['type'] ?? 'text',
+                        'options' => $item['options'] ?? null,
                         'description' => $item['description'] ?? null,
-                        'sort_order'  => $item['sort'] ?? 0,
-                        'is_public'   => $item['public'] ?? true,
+                        'sort_order' => $item['sort'] ?? 0,
+                        'is_public' => $item['public'] ?? true,
                     ]
                 );
             }

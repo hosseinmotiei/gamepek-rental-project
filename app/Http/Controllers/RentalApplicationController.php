@@ -1,0 +1,336 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Contract;
+use App\Models\Order;
+use App\Models\Product;
+use App\Models\RentalApplication;
+use App\Services\Contract\ContractService;
+use App\Services\Guarantee\GuaranteeService;
+use App\Services\OtpService;
+use App\Services\PaymentService;
+use App\Services\Providers\ProviderException;
+use App\Services\Rental\RentalChainOrchestrator;
+use App\Services\Rental\RentalReservationService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+
+/**
+ * The customer-facing half of the rental chain.
+ *
+ * Every action here changes exactly one child record and then calls
+ * $orchestrator->advance(). None of them writes the application's state -- see
+ * RentalChainOrchestrator for why that separation is the whole design.
+ */
+class RentalApplicationController extends Controller
+{
+    public function __construct(
+        private RentalReservationService $reservations,
+        private RentalChainOrchestrator $orchestrator,
+        private PaymentService $payments,
+        private GuaranteeService $guarantees,
+        private ContractService $contracts,
+        private OtpService $otp,
+    ) {}
+
+    public function store(Request $request)
+    {
+        $application = $this->reservations->openApplication($request->user());
+
+        return $this->ok($request, 'درخواست اجاره ایجاد شد.', [
+            'application_number' => $application->application_number,
+            'state' => $application->state->value,
+        ]);
+    }
+
+    public function show(Request $request, RentalApplication $application)
+    {
+        $this->authorize('view', $application);
+
+        $application->loadMissing([
+            'user.identity', 'user.bankAccounts',
+            'reservation.product', 'order', 'guarantee.inquiries',
+            'contract.signatures', 'transitions',
+        ]);
+
+        // Re-derive before rendering. A customer can finish a step elsewhere
+        // (identity, bank ownership) and come back here; advance() is a no-op
+        // when nothing changed, so this only ever catches the page up.
+        $this->orchestrator->advance($application);
+
+        $application->refresh()->loadMissing([
+            'user.identity', 'user.bankAccounts',
+            'reservation.product', 'order', 'guarantee.inquiries',
+            'contract.signatures', 'transitions',
+        ]);
+
+        return view('rental.application', ['application' => $application]);
+    }
+
+    public function reserve(Request $request, RentalApplication $application)
+    {
+        $this->authorize('update', $application);
+
+        $data = $request->validate([
+            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'start_date' => ['required', 'date'],
+            'days' => ['required', 'integer', 'min:1', 'max:365'],
+            'extra_controller' => ['sometimes', 'boolean'],
+        ], [
+            'start_date.required' => 'انتخاب تاریخ شروع الزامی است.',
+            'days.required' => 'تعیین مدت اجاره الزامی است.',
+            'days.min' => 'مدت اجاره باید حداقل یک روز باشد.',
+        ]);
+
+        $product = Product::findOrFail($data['product_id']);
+
+        try {
+            // Note what is NOT read from the request: any price. The quote is
+            // computed server-side by RentalPricingService.
+            $reservation = $this->reservations->reserve(
+                $application,
+                $product,
+                $data['start_date'],
+                (int) $data['days'],
+                (bool) ($data['extra_controller'] ?? false),
+            );
+        } catch (\RuntimeException $e) {
+            return $this->fail($request, $e->getMessage(), 422);
+        }
+
+        return $this->ok($request, 'رزرو ثبت شد.', [
+            'reservation_id' => $reservation->id,
+            'payable_now' => $reservation->payable_now,
+            'deposit' => $reservation->deposit_amount,
+            'state' => $application->refresh()->state->value,
+        ]);
+    }
+
+    /**
+     * Creates the Order from the reservation snapshot and starts payment.
+     *
+     * The order total is `payable_now`, which by RentalQuote's own contract
+     * excludes the deposit -- a deposit is a refundable hold, not a charge,
+     * and TODO(business) B4 leaves how it is held undecided. Nothing here
+     * charges it.
+     */
+    public function pay(Request $request, RentalApplication $application)
+    {
+        $this->authorize('update', $application);
+
+        $application->loadMissing(['reservation', 'order']);
+
+        if (! $application->reservation) {
+            return $this->fail($request, 'ابتدا باید یک رزرو ثبت کنید.', 422);
+        }
+
+        $order = DB::transaction(function () use ($application) {
+            $locked = RentalApplication::where('id', $application->id)->lockForUpdate()->first();
+
+            if ($locked->order_id) {
+                return Order::find($locked->order_id);
+            }
+
+            $reservation = $locked->reservation;
+
+            $order = Order::create([
+                'order_number' => 'RNT-'.now()->format('Ymd').'-'.strtoupper(Str::random(6)),
+                'user_id' => $locked->user_id,
+                'status' => 'pending_payment',
+                'payment_status' => 'unpaid',
+                'subtotal' => $reservation->rental_total,
+                'shipping_cost' => $reservation->delivery_fee,
+                'total' => $reservation->payable_now,
+            ]);
+
+            $locked->update(['order_id' => $order->id]);
+
+            return $order;
+        });
+
+        $this->orchestrator->advance($application->refresh(), 'order created');
+
+        $result = $this->payments->initiatePayment($order);
+
+        if (! ($result['success'] ?? false)) {
+            return $this->fail($request, $result['message'] ?? 'درگاه پرداخت در دسترس نیست.', 422);
+        }
+
+        // A browser form post has to actually land on the gateway; only an
+        // API caller wants the URL handed back to it.
+        if (! $request->expectsJson()) {
+            return redirect()->away($result['redirect_url']);
+        }
+
+        return $this->ok($request, 'در حال انتقال به درگاه پرداخت.', [
+            'redirect_url' => $result['redirect_url'],
+            'order_number' => $order->order_number,
+        ]);
+    }
+
+    public function storeGuarantee(Request $request, RentalApplication $application)
+    {
+        $this->authorize('update', $application);
+
+        $data = $request->validate([
+            'type' => ['sometimes', 'in:cheque,promissory_note'],
+            'sayad_id' => ['required_if:type,cheque', 'nullable', 'string', 'size:16'],
+            'amount' => ['nullable', 'integer', 'min:0'],
+            'due_date' => ['nullable', 'date'],
+            'bank_code' => ['nullable', 'string', 'max:8'],
+            'bank_name' => ['nullable', 'string', 'max:100'],
+        ], [
+            'sayad_id.required_if' => 'وارد کردن شناسه صیاد چک الزامی است.',
+            'sayad_id.size' => 'شناسه صیاد باید ۱۶ رقم باشد.',
+        ]);
+
+        $application->loadMissing('user.identity');
+
+        try {
+            $guarantee = $this->guarantees->submit($application, $data);
+            $guarantee->setRelation('application', $application);
+            $this->guarantees->runInquiries($guarantee);
+        } catch (\InvalidArgumentException $e) {
+            return $this->fail($request, $e->getMessage(), 422);
+        } catch (ProviderException $e) {
+            return $this->fail($request, $e->persianMessage, 503);
+        }
+
+        $this->orchestrator->advance($application->refresh(), 'guarantee submitted');
+
+        return $this->ok($request, 'اطلاعات ضمانت ثبت و استعلام شد.', [
+            'guarantee_state' => $guarantee->refresh()->state->value,
+            'state' => $application->refresh()->state->value,
+        ]);
+    }
+
+    public function contract(Request $request, RentalApplication $application)
+    {
+        $this->authorize('view', $application);
+
+        try {
+            $contract = $this->contracts->generate($application);
+        } catch (\RuntimeException $e) {
+            return $this->fail($request, $e->getMessage(), 422);
+        }
+
+        $this->orchestrator->advance($application->refresh(), 'contract generated');
+
+        return view('rental.contract', [
+            'application' => $application,
+            'contract' => $contract,
+        ]);
+    }
+
+    public function acceptContract(Request $request, RentalApplication $application)
+    {
+        $this->authorize('update', $application);
+
+        $application->loadMissing('contract');
+        $contract = $application->contract;
+
+        if (! $contract) {
+            return $this->fail($request, 'ابتدا باید قرارداد صادر شود.', 422);
+        }
+
+        try {
+            $this->contracts->accept(
+                $contract,
+                $request->user(),
+                (string) $request->ip(),
+                (string) $request->userAgent(),
+            );
+        } catch (\RuntimeException $e) {
+            return $this->fail($request, $e->getMessage(), 422);
+        }
+
+        $this->orchestrator->advance($application->refresh(), 'contract accepted');
+
+        return $this->ok($request, 'قرارداد پذیرفته شد.', [
+            'state' => $application->refresh()->state->value,
+        ]);
+    }
+
+    /**
+     * Sends the signing OTP.
+     *
+     * This route carries its OWN throttle name, separate from
+     * `auth.send-otp`'s. If they shared a bucket, signing a contract could
+     * exhaust the login OTP allowance and lock the customer out of their own
+     * account halfway through the signature.
+     */
+    public function requestSignatureOtp(Request $request, RentalApplication $application)
+    {
+        $this->authorize('update', $application);
+
+        try {
+            $this->otp->generateAndSend((string) $request->user()->mobile);
+        } catch (\Throwable $e) {
+            Log::error('Contract signature OTP failed', ['exception' => $e->getMessage()]);
+
+            return $this->fail($request, 'ارسال کد تأیید ممکن نشد. لطفاً دوباره تلاش کنید.', 503);
+        }
+
+        return $this->ok($request, 'کد تأیید امضا ارسال شد.');
+    }
+
+    public function signContract(Request $request, RentalApplication $application)
+    {
+        $this->authorize('update', $application);
+
+        $data = $request->validate([
+            'code' => ['required', 'string'],
+        ], [
+            'code.required' => 'وارد کردن کد تأیید الزامی است.',
+        ]);
+
+        $application->loadMissing('contract');
+        $contract = $application->contract;
+
+        if (! $contract) {
+            return $this->fail($request, 'قراردادی برای امضا وجود ندارد.', 422);
+        }
+
+        if (! $this->otp->verify((string) $request->user()->mobile, $data['code'])) {
+            return $this->fail($request, 'کد تأیید نادرست یا منقضی شده است.', 422);
+        }
+
+        try {
+            $signature = $this->contracts->sign($contract, $request->user(), [
+                'ip' => (string) $request->ip(),
+                'user_agent' => (string) $request->userAgent(),
+                'otp_reference' => 'mobile:'.$request->user()->mobile,
+            ]);
+        } catch (\RuntimeException $e) {
+            return $this->fail($request, $e->getMessage(), 422);
+        }
+
+        $this->orchestrator->advance($application->refresh(), 'contract signed');
+
+        return $this->ok($request, 'قرارداد با موفقیت امضا شد.', [
+            'signature_id' => $signature->id,
+            'state' => $application->refresh()->state->value,
+        ]);
+    }
+
+    private function ok(Request $request, string $message, array $payload = [])
+    {
+        if ($request->expectsJson()) {
+            return response()->json(array_merge(['success' => true, 'message' => $message], $payload));
+        }
+
+        return back()->with('success', $message);
+    }
+
+    private function fail(Request $request, string $message, int $status)
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['success' => false, 'message' => $message], $status);
+        }
+
+        return back()->withErrors(['rental' => $message]);
+    }
+}

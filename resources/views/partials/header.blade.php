@@ -1,18 +1,14 @@
 @php
     // Admin-editable via پنل ادمین > منوها (location: "منوی دسته‌بندی‌ها").
-    // Both the desktop mega-menu and the mobile fullscreen modal below read
-    // this same tree, so an edit in the panel updates both at once.
-    $categoryMenuTabs = \App\Models\MenuItem::forLocation('category_menu')
-        ->active()
-        ->whereNull('parent_id')
-        ->with(['children' => fn ($q) => $q->active(), 'children.children' => fn ($q) => $q->active()])
-        ->orderBy('sort_order')
-        ->get();
+    // The desktop mega-menu, the mobile fullscreen modal and the homepage
+    // categories section all read MenuItem::categoryTree(), so one edit in
+    // the panel updates all three — and its Category fallback means the menu
+    // is never empty just because the taxonomy has not been entered yet.
+    $categoryMenuTabs = \App\Models\MenuItem::categoryTree();
 
-    // The small row of extra nav links next to the mega-menu (کنسول‌ها،
-    // گیفت کارت، بازی‌های PS5، GTA VI، مجله) -- admin-editable via
-    // پنل ادمین > منوها (location: "لینک‌های ناوبری هدر"). Deliberately NOT
-    // location=header -- that already holds unrelated pre-existing rows.
+    // The small row of extra nav links next to the mega-menu — admin-editable
+    // via پنل ادمین > منوها (location: "لینک‌های ناوبری هدر"). Deliberately NOT
+    // location=header — that already holds unrelated pre-existing rows.
     $headerNavLinks = \App\Models\MenuItem::forLocation('header_nav_links')
         ->active()
         ->orderBy('sort_order')
@@ -28,10 +24,11 @@
             <span><i class="fa-solid fa-phone text-brandBlue ml-1"></i> {{ setting('header.topbar_support_text', 'پشتیبانی') }}: {{ setting('header.topbar_support_phone', '021-91004050') }}</span>
             <span><i class="fa-solid fa-shield-halved text-brandBlue ml-1"></i> {{ setting('header.topbar_trust_text', 'تضمین اصالت و سلامت کالا') }}</span>
         </div>
-        <div class="flex items-center gap-4">
-            <a href="{{ route('orders.index') }}" class="hover:text-brandBlue transition-colors">پیگیری سفارش</a>
-            <a href="{{ route('terms') }}" class="hover:text-brandBlue transition-colors">قوانین و مقررات</a>
-        </div>
+        {{-- «پیگیری سفارش» and «قوانین و مقررات» were removed from the top bar
+             to keep it uncluttered. Their routes are untouched: order tracking
+             now lives in the account area (profile / سفارش‌های من and the
+             footer), and the terms page in the footer and the categories menu.
+             --}}
     </div>
 
     <!-- Main Header -->
@@ -53,13 +50,16 @@
 
         <!-- Desktop Left Actions -->
         <div class="hidden md:flex items-center justify-end gap-4">
-            <button class="flex items-center gap-2 text-sm text-gray-600 hover:text-brandBlue transition-colors py-2 px-3 hover:bg-brandGray rounded-xl">
+            {{-- Informational, not an action: there is no city picker behind
+                 it (delivery is Tehran-only, see StoreAddressRequest). It was
+                 a <button> with no handler -- clickable-looking and dead. --}}
+            <div class="flex items-center gap-2 text-sm text-gray-600 py-2 px-3 rounded-xl">
                 <i class="fa-solid fa-location-dot text-brandBlue text-lg"></i>
                 <div class="text-right">
                     <p class="text-xs text-gray-400">{{ setting('header.location_label', 'ارسال به') }}</p>
                     <p class="font-bold text-xs">{{ setting('header.location_default_text', 'تهران') }}</p>
                 </div>
-            </button>
+            </div>
             <div class="h-8 w-px bg-gray-200"></div>
 
             @auth
@@ -112,19 +112,33 @@
         <div class="max-w-[1400px] mx-auto px-4 flex items-center justify-between text-sm">
             <div class="flex items-center gap-6 py-3">
                 <!-- Mega Menu (admin-editable: پنل ادمین > منوها > منوی دسته‌بندی‌ها) -->
-                <div class="relative group z-50">
-                    <button class="flex items-center gap-2 font-bold text-gray-800 group-hover:text-brandBlue py-1 transition-colors">
+                {{-- Opens on hover AND on click. Hover alone left the button
+                     dead for keyboard and touch users; the JS below toggles
+                     `data-open` on this wrapper, which the CSS honours the
+                     same way it honours :hover. --}}
+                <div class="relative group z-50" id="mega-menu" data-mega-menu>
+                    <button type="button" id="mega-menu-button" aria-haspopup="true" aria-expanded="false" aria-controls="mega-menu-panel"
+                            class="flex items-center gap-2 font-bold text-gray-800 group-hover:text-brandBlue py-1 transition-colors">
                         <i class="fa-solid fa-bars"></i>
                         <span>{{ setting('header.category_menu_title', 'دسته‌بندی کالاها') }}</span>
+                        <i class="fa-solid fa-chevron-down text-[10px] text-gray-400 transition-transform"></i>
                     </button>
-                    @if($categoryMenuTabs->isNotEmpty())
                     <!-- Dropdown Container -->
-                    <div class="absolute right-0 top-full mt-2 w-[900px] bg-white rounded-b-2xl shadow-xl border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 flex h-[450px] overflow-hidden">
+                    <div id="mega-menu-panel" class="mega-menu-panel absolute right-0 top-full mt-2 w-[900px] bg-white rounded-b-2xl shadow-xl border border-gray-100 opacity-0 invisible transition-all duration-300 flex h-[450px] overflow-hidden">
+                        @if($categoryMenuTabs->isEmpty())
+                        <div class="flex-1 flex flex-col items-center justify-center text-center px-8 text-gray-400">
+                            <i class="fa-solid fa-folder-open text-4xl mb-3"></i>
+                            <p class="text-sm text-gray-600 font-bold mb-1">هنوز دسته‌بندی‌ای ثبت نشده است.</p>
+                            <p class="text-xs mb-4">دسته‌بندی‌ها از پنل ادمین (دسته‌بندی‌ها / منوها) اضافه می‌شوند.</p>
+                            <a href="{{ route('products.index') }}" class="text-brandBlue text-sm font-bold">مشاهده همه موارد قابل اجاره</a>
+                        </div>
+                        @else
                         <!-- Right Sidebar (Main Categories) -->
                         <div class="w-64 bg-gray-50 border-l border-gray-100 flex flex-col py-2 z-10">
                             @foreach($categoryMenuTabs as $tab)
                             <div class="desk-cat-tab {{ $loop->first ? 'bg-white text-brandBlue border-brandBlue' : 'text-gray-700 hover:bg-gray-100 border-transparent' }} px-4 py-3.5 font-bold text-sm cursor-pointer flex items-center gap-3 transition-colors border-r-2"
-                                 onmouseenter="switchDeskCat('desk-cat-{{ $tab->id }}', this)">
+                                 onmouseenter="switchDeskCat('desk-cat-{{ $tab->id }}', this)"
+                                 onclick="switchDeskCat('desk-cat-{{ $tab->id }}', this)">
                                 <i class="{{ $tab->icon ?: 'fa-solid fa-tag' }} text-lg w-6 text-center"></i> {{ $tab->title }}
                             </div>
                             @endforeach
@@ -149,8 +163,8 @@
                             </div>
                             @endforeach
                         </div>
+                        @endif
                     </div>
-                    @endif
                 </div>
 
                 @foreach($headerNavLinks as $navLink)
@@ -173,6 +187,15 @@
             <button onclick="closeMobileCategories()" class="w-10 h-10 flex items-center justify-center text-gray-600 shrink-0"><i class="fa-solid fa-arrow-left text-lg"></i></button>
         </div>
     </div>
+    @if($categoryMenuTabs->isEmpty())
+    {{-- Never open onto a blank panel: say why it is empty and offer the
+         catalog, which always exists. --}}
+    <div class="flex-1 flex flex-col items-center justify-center text-center px-8 text-gray-400">
+        <i class="fa-solid fa-folder-open text-4xl mb-3"></i>
+        <p class="text-sm text-gray-600 font-bold mb-1">هنوز دسته‌بندی‌ای ثبت نشده است.</p>
+        <a href="{{ route('products.index') }}" class="mt-3 bg-brandBlue text-white text-sm font-bold px-5 py-2.5 rounded-xl">مشاهده همه موارد قابل اجاره</a>
+    </div>
+    @else
     <div class="flex flex-1 overflow-hidden">
         <!-- Right Sidebar -->
         <div class="w-[28%] bg-gray-50 flex flex-col overflow-y-auto border-l border-gray-100 hide-scrollbar pb-24">
@@ -206,13 +229,49 @@
             @endforeach
         </div>
     </div>
+    @endif
 </div>
 
 <style>
+    /* The panel is visible when the wrapper is hovered OR marked open by the
+       click handler. Both routes use the same two properties, so there is one
+       visual state, not two competing ones. */
+    #mega-menu:hover .mega-menu-panel,
+    #mega-menu[data-open="true"] .mega-menu-panel { opacity: 1; visibility: visible; }
+    #mega-menu[data-open="true"] #mega-menu-button .fa-chevron-down { transform: rotate(180deg); }
+
     @keyframes deskCatFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
     .desk-cat-fade-in { animation: deskCatFadeIn 0.25s ease-out; }
 </style>
 <script>
+    // Mega menu open/close. Click toggles, Escape closes, a click outside
+    // closes, and following a link closes it before the page navigates.
+    (function () {
+        const menu = document.getElementById('mega-menu');
+        if (!menu) return;
+        const button = document.getElementById('mega-menu-button');
+
+        function setOpen(open) {
+            menu.dataset.open = open ? 'true' : 'false';
+            button.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+
+        button.addEventListener('click', e => {
+            e.stopPropagation();
+            setOpen(menu.dataset.open !== 'true');
+        });
+
+        document.addEventListener('click', e => {
+            if (!menu.contains(e.target)) setOpen(false);
+        });
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') setOpen(false);
+        });
+
+        setOpen(false);
+    })();
+
     // Desktop Category Mega Menu Tab Switcher
     function switchDeskCat(catId, element) {
         const target = document.getElementById(catId);
@@ -256,6 +315,12 @@
         setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 300);
         document.body.style.overflow = '';
     }
+    // Escape closes the fullscreen categories modal as well.
+    document.addEventListener('keydown', e => {
+        const modal = document.getElementById('mobile-category-modal');
+        if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) closeMobileCategories();
+    });
+
     function switchMobCat(catId, element) {
         const target = document.getElementById(catId);
         const scrollArea = target.parentElement;

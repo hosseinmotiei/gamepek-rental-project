@@ -51,6 +51,12 @@
     $pageTitle = $activeCategoryName ?? 'همه محصولات';
 @endphp
 
+{{-- The rental search bar — the same component the home hero uses, not a
+     copy. The window chosen here travels with the visitor into the product
+     page (which no longer has a date picker of its own). --}}
+<div id="rental-search" class="max-w-[1400px] mx-auto px-4 pt-4 md:pt-6">
+    @include('partials.rental-search-bar', ['variant' => 'catalog'])
+</div>
 {{-- Mobile Title / Action Bar --}}
 <div class="md:hidden sticky top-0 z-30 w-full bg-white border-b border-gray-100 flex flex-col transition-all">
     <div class="flex items-center justify-between px-4 py-3">

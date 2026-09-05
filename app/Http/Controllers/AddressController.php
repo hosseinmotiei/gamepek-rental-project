@@ -13,6 +13,7 @@ class AddressController extends Controller
     public function index(): View
     {
         $addresses = auth()->user()->addresses()->orderByDesc('is_default')->get();
+
         return view('profile.addresses', compact('addresses'));
     }
 

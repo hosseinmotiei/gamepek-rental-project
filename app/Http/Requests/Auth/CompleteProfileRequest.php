@@ -15,7 +15,7 @@ class CompleteProfileRequest extends FormRequest
     {
         return [
             'full_name' => ['required', 'string', 'min:3', 'max:100'],
-            'email'     => ['nullable', 'email', 'max:255', 'unique:users,email,' . auth()->id()],
+            'email' => ['nullable', 'email', 'max:255', 'unique:users,email,'.auth()->id()],
         ];
     }
 
@@ -23,10 +23,10 @@ class CompleteProfileRequest extends FormRequest
     {
         return [
             'full_name.required' => 'نام و نام خانوادگی الزامی است.',
-            'full_name.min'      => 'نام باید حداقل ۳ کاراکتر باشد.',
-            'email.email'        => 'فرمت ایمیل معتبر نیست.',
-            'email.max'          => 'ایمیل نباید بیشتر از ۲۵۵ کاراکتر باشد.',
-            'email.unique'       => 'این ایمیل قبلاً ثبت شده است.',
+            'full_name.min' => 'نام باید حداقل ۳ کاراکتر باشد.',
+            'email.email' => 'فرمت ایمیل معتبر نیست.',
+            'email.max' => 'ایمیل نباید بیشتر از ۲۵۵ کاراکتر باشد.',
+            'email.unique' => 'این ایمیل قبلاً ثبت شده است.',
         ];
     }
 }

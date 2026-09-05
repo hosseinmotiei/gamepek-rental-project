@@ -22,8 +22,11 @@ namespace App\Support\Rental;
 class Availability
 {
     public const KIND_PAST = 'past';
+
     public const KIND_AVAILABLE = 'available';
+
     public const KIND_RESERVED = 'reserved';
+
     public const KIND_PENDING = 'pending';
 
     /**

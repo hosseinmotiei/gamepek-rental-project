@@ -9,15 +9,14 @@ use App\Services\CatalogService;
 use App\Services\RentalPricingService;
 use App\Support\Rental\RentalCalendar;
 use App\Support\Rental\RentalItem;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class ProductController extends Controller
 {
-    public function __construct(private CatalogService $catalogService)
-    {
-    }
+    public function __construct(private CatalogService $catalogService) {}
 
     public function index(Request $request): View
     {
@@ -120,13 +119,45 @@ class ProductController extends Controller
         ));
     }
 
+    /**
+     * Search / results page. Serves both the header's text search (`q`) and
+     * the home-page rental search bar (`city` + `from` + `to`).
+     *
+     * A date search runs on its own -- it does not require a text query --
+     * because 'what can I rent between these two dates' is the primary flow
+     * the home page is built around.
+     */
     public function searchPage(Request $request): View
     {
         $q = trim($request->get('q', ''));
         $products = collect();
+        $errors = [];
 
-        if (strlen($q) >= 2) {
-            $filters = ['q' => $q];
+        $cities = (array) config('rental.search.cities', []);
+        $city = (string) $request->get('city', '');
+        if ($city !== '' && ! in_array($city, $cities, true)) {
+            $errors['city'] = 'شهر انتخاب‌شده در حال حاضر پشتیبانی نمی‌شود.';
+            $city = '';
+        }
+
+        [$from, $to, $dateError] = $this->rentalWindow($request);
+        if ($dateError !== null) {
+            $errors['dates'] = $dateError;
+        }
+
+        $hasWindow = $from !== null && $to !== null;
+
+        if (strlen($q) >= 2 || $hasWindow) {
+            $filters = [];
+
+            if (strlen($q) >= 2) {
+                $filters['q'] = $q;
+            }
+
+            if ($hasWindow) {
+                $filters['rental_from'] = $from;
+                $filters['rental_to'] = $to;
+            }
 
             $categoryId = (int) $request->get('category');
             if ($categoryId > 0) {
@@ -151,7 +182,60 @@ class ProductController extends Controller
             $products = $this->catalogService->getFilteredProducts($filters, $sort);
         }
 
-        return view('search.index', compact('products', 'q'));
+        return view('search.index', [
+            'products' => $products,
+            'q' => $q,
+            'city' => $city,
+            'from' => $from,
+            'to' => $to,
+            'days' => $from && $to ? (int) Carbon::parse($from)->diffInDays(Carbon::parse($to)) : null,
+            'searchErrors' => $errors,
+        ]);
+    }
+
+    /**
+     * Read and validate the requested rental window.
+     *
+     * The form is the untrusted side: a start in the past, an end before the
+     * start or an absurdly long window is rejected here, not just in the
+     * browser.
+     *
+     * @return array{0: ?string, 1: ?string, 2: ?string} [from, to, error]
+     */
+    private function rentalWindow(Request $request): array
+    {
+        $rawFrom = (string) $request->get('from', '');
+        $rawTo = (string) $request->get('to', '');
+
+        if ($rawFrom === '' && $rawTo === '') {
+            return [null, null, null];
+        }
+
+        if ($rawFrom === '' || $rawTo === '') {
+            return [null, null, 'برای جستجو بر اساس تاریخ، هر دو تاریخ شروع و پایان را وارد کنید.'];
+        }
+
+        try {
+            $from = Carbon::createFromFormat('Y-m-d', $rawFrom)->startOfDay();
+            $to = Carbon::createFromFormat('Y-m-d', $rawTo)->startOfDay();
+        } catch (\Throwable) {
+            return [null, null, 'فرمت تاریخ نامعتبر است.'];
+        }
+
+        if ($from->lt(now()->startOfDay())) {
+            return [null, null, 'تاریخ شروع نمی‌تواند در گذشته باشد.'];
+        }
+
+        if ($to->lte($from)) {
+            return [null, null, 'تاریخ پایان باید بعد از تاریخ شروع باشد.'];
+        }
+
+        $maxDays = (int) config('rental.search.max_days', 90);
+        if ($maxDays > 0 && $from->diffInDays($to) > $maxDays) {
+            return [null, null, 'حداکثر مدت اجاره '.persian_number($maxDays).' روز است.'];
+        }
+
+        return [$from->toDateString(), $to->toDateString(), null];
     }
 
     public function search(Request $request): JsonResponse
@@ -174,14 +258,14 @@ class ProductController extends Controller
             ->limit(4)
             ->get()
             ->map(fn (Category $c) => [
-                'type'      => 'category',
-                'id'        => $c->id,
-                'title'     => $c->name_fa,
-                'subtitle'  => persian_number($c->products_count) . ' محصول',
-                'url'       => route('products.index', ['category' => $c->slug]),
-                'icon'      => $c->icon ?: 'fa-solid fa-border-all',
-                'image_url' => $c->image ? asset('storage/' . $c->image) : null,
-                'price'     => null,
+                'type' => 'category',
+                'id' => $c->id,
+                'title' => $c->name_fa,
+                'subtitle' => persian_number($c->products_count).' محصول',
+                'url' => route('products.index', ['category' => $c->slug]),
+                'icon' => $c->icon ?: 'fa-solid fa-border-all',
+                'image_url' => $c->image ? asset('storage/'.$c->image) : null,
+                'price' => null,
             ]);
 
         // Products
@@ -196,20 +280,19 @@ class ProductController extends Controller
             ->limit(5)
             ->get()
             ->map(fn (Product $p) => [
-                'type'      => 'product',
-                'id'        => $p->id,
-                'title'     => $p->title_fa,
-                'subtitle'  => $p->title_en ?? '',
-                'url'       => route('products.show', $p->slug),
-                'icon'      => null,
+                'type' => 'product',
+                'id' => $p->id,
+                'title' => $p->title_fa,
+                'subtitle' => $p->title_en ?? '',
+                'url' => route('products.show', $p->slug),
+                'icon' => null,
                 'image_url' => product_image_url($p),
-                'price'     => $p->sale_price ?? $p->price,
-                'price_fa'  => $p->price ? (persian_number($p->sale_price ?? $p->price) . ' تومان') : null,
+                'price' => $p->sale_price ?? $p->price,
+                'price_fa' => $p->price ? (persian_number($p->sale_price ?? $p->price).' تومان') : null,
             ]);
 
         $results = $categories->concat($products)->values();
 
         return response()->json(['results' => $results]);
     }
-
 }

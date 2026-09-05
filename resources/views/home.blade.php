@@ -11,9 +11,89 @@
 
 
 @section('content')
+{{-- Hero: the entry point. Headline, one line of context, and the rental
+     search bar -- the primary action of the whole site. Full-bleed so it
+     reads as the page opener; the rest of the page keeps the 1400px rail. --}}
+<section class="bg-gradient-to-l from-brandDark via-brandDark to-blue-900 text-white">
+    <div class="max-w-[1400px] mx-auto px-4 pt-10 pb-8 md:pt-16 md:pb-14">
+        <div class="max-w-3xl">
+            <span class="inline-block bg-white/10 border border-white/15 text-[11px] md:text-xs font-bold px-3 py-1.5 rounded-full mb-4">گیم‌پک اجاره</span>
+            <h1 class="text-2xl sm:text-4xl md:text-5xl font-black leading-tight mb-3">
+                {{ setting('home.hero_title', 'کنسول بازی را اجاره کن، نه بخر') }}
+            </h1>
+            <p class="text-sm md:text-base text-blue-100/90 leading-relaxed mb-7 max-w-xl">
+                {{ setting('home.hero_subtitle', 'تاریخ شروع و پایان را انتخاب کن و دستگاه‌های آزاد همان بازه را ببین.') }}
+            </p>
+        </div>
+
+        {{-- The one component; the results page re-uses it. --}}
+        @include('partials.rental-search-bar', ['variant' => 'hero'])
+
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mt-5 text-[11px] md:text-xs text-blue-100/80">
+            <span><i class="fa-solid fa-shield-halved ml-1"></i> قرارداد رسمی و احراز هویت</span>
+            <span><i class="fa-solid fa-clock-rotate-left ml-1"></i> اجاره روزانه تا چند هفته</span>
+            <span><i class="fa-solid fa-headset ml-1"></i> پشتیبانی همه‌روزه</span>
+        </div>
+    </div>
+</section>
+
 <div class="max-w-[1400px] mx-auto px-4 py-6 md:py-8">
 
-    {{-- Hero Carousel --}}
+    {{-- محصولات پیشنهادی — real rentable devices, rendered with the one
+         catalog card (partials/product-card). Each card already links to
+         products.show, so there is no second navigation path to keep in
+         sync. Hidden entirely when nothing is rentable yet rather than
+         showing an empty rail. --}}
+    @if(($homeSections['featured_products'] ?? true) && $homeData['rentable']->isNotEmpty())
+    <section class="mb-12">
+        <div class="flex items-center justify-between mb-4 md:mb-6">
+            <h2 class="text-base md:text-xl font-black text-gray-800">محصولات پیشنهادی</h2>
+            <a href="{{ route('products.index') }}" class="text-xs md:text-sm text-brandBlue font-bold flex items-center gap-1 hover:text-blue-700 transition-colors">
+                مشاهده همه <i class="fa-solid fa-chevron-left text-[10px]"></i>
+            </a>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+            @foreach($homeData['rentable'] as $product)
+                @include('partials.product-card', ['product' => $product])
+            @endforeach
+        </div>
+    </section>
+    @endif
+
+    {{-- دسته‌بندی‌ها — the same admin-managed tree the header menu reads, so
+         one edit in پنل ادمین > منوها updates the header, the mobile menu and
+         this section together. --}}
+    @if($categoryMenu->isNotEmpty())
+    <section class="mb-12">
+        <div class="flex items-center justify-between mb-4 md:mb-6">
+            <h2 class="text-base md:text-xl font-black text-gray-800">دسته‌بندی‌ها</h2>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+            @foreach($categoryMenu as $tab)
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <a href="{{ $tab->resolved_url }}" class="flex items-center gap-3 mb-3 group">
+                    <span class="w-10 h-10 rounded-xl bg-brandLightBlue text-brandBlue flex items-center justify-center shrink-0">
+                        <i class="{{ $tab->icon ?: 'fa-solid fa-tag' }}"></i>
+                    </span>
+                    <span class="font-bold text-sm text-gray-800 group-hover:text-brandBlue transition-colors">{{ $tab->title }}</span>
+                </a>
+                @if($tab->children->isNotEmpty())
+                <ul class="space-y-2 pr-13 text-xs text-gray-600">
+                    @foreach($tab->children as $child)
+                    <li>
+                        <a href="{{ $child->resolved_url }}" class="hover:text-brandBlue transition-colors flex items-center gap-1.5">
+                            <i class="fa-solid fa-chevron-left text-[8px] text-gray-300"></i> {{ $child->title }}
+                        </a>
+                    </li>
+                    @endforeach
+                </ul>
+                @endif
+            </div>
+            @endforeach
+        </div>
+    </section>
+    @endif
+    {{-- Promotional banner carousel (admin-managed) --}}
     <section class="mb-8 md:mb-10 relative">
         <div id="hero-carousel" class="relative overflow-hidden rounded-2xl md:rounded-3xl aspect-[2.8/1] min-h-[160px] w-full shadow-lg">
             @forelse($banners as $index => $banner)

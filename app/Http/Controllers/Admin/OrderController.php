@@ -10,13 +10,11 @@ use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
-    public function __construct(private OrderService $orderService)
-    {
-    }
+    public function __construct(private OrderService $orderService) {}
 
     public function index(Request $request)
     {
-        abort_if(!auth()->user()->can('view_orders'), 403);
+        abort_if(! auth()->user()->can('view_orders'), 403);
 
         $query = Order::with(['user', 'latestTransaction'])->latest();
 
@@ -28,8 +26,8 @@ class OrderController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('order_number', 'like', "%{$search}%")
-                  ->orWhereHas('user', fn ($u) => $u->where('full_name', 'like', "%{$search}%")
-                      ->orWhere('mobile', 'like', "%{$search}%"));
+                    ->orWhereHas('user', fn ($u) => $u->where('full_name', 'like', "%{$search}%")
+                        ->orWhere('mobile', 'like', "%{$search}%"));
             });
         }
 
@@ -52,16 +50,16 @@ class OrderController extends Controller
 
     public function show(Order $order)
     {
-        abort_if(!auth()->user()->can('view_orders'), 403);
+        abort_if(! auth()->user()->can('view_orders'), 403);
 
-        $order->load(['user', 'items.product', 'items.digitalCode', 'paymentTransactions', 'shippingAddress', 'coupon']);
+        $order->load(['user', 'items.product', 'paymentTransactions', 'shippingAddress', 'coupon']);
 
         return view('admin.orders.show', compact('order'));
     }
 
     public function updateStatus(Request $request, Order $order)
     {
-        abort_if(!auth()->user()->can('update_order_status'), 403);
+        abort_if(! auth()->user()->can('update_order_status'), 403);
 
         $request->validate([
             'status' => 'required|in:pending_payment,paid,processing,shipped,delivered,cancelled,refunded,failed',
@@ -78,7 +76,7 @@ class OrderController extends Controller
             return back()->with('error', 'سفارش در وضعیت نهایی است و قابل تغییر نیست.');
         }
 
-        if ($newStatus === 'paid' && !$order->paid_at) {
+        if ($newStatus === 'paid' && ! $order->paid_at) {
             // Delegate to the canonical successful-payment lifecycle so admin
             // mark-paid performs the same stock/coupon/cart/digital-code
             // effects as a real payment, instead of a divergent subset.
@@ -99,8 +97,8 @@ class OrderController extends Controller
             try {
                 match ($newStatus) {
                     'processing' => $this->orderService->markProcessing($order),
-                    'shipped'    => $this->orderService->markShipped($order),
-                    'delivered'  => $this->orderService->markDelivered($order),
+                    'shipped' => $this->orderService->markShipped($order),
+                    'delivered' => $this->orderService->markDelivered($order),
                 };
             } catch (\Exception $e) {
                 return back()->with('error', $e->getMessage());
@@ -119,7 +117,7 @@ class OrderController extends Controller
 
     public function saveNote(Request $request, Order $order)
     {
-        abort_if(!auth()->user()->can('create_order_notes'), 403);
+        abort_if(! auth()->user()->can('create_order_notes'), 403);
 
         $request->validate(['admin_note' => 'nullable|string|max:2000']);
 

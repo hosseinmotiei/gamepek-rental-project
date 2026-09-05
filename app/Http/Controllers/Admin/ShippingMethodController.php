@@ -11,7 +11,7 @@ class ShippingMethodController extends Controller
 {
     public function index()
     {
-        abort_if(!auth()->user()->can('view_shipping_methods'), 403);
+        abort_if(! auth()->user()->can('view_shipping_methods'), 403);
 
         $methods = ShippingMethod::orderBy('sort_order')->orderBy('id')->get();
 
@@ -20,14 +20,14 @@ class ShippingMethodController extends Controller
 
     public function create()
     {
-        abort_if(!auth()->user()->can('create_shipping_methods'), 403);
+        abort_if(! auth()->user()->can('create_shipping_methods'), 403);
 
         return view('admin.shipping-methods.create');
     }
 
     public function store(Request $request)
     {
-        abort_if(!auth()->user()->can('create_shipping_methods'), 403);
+        abort_if(! auth()->user()->can('create_shipping_methods'), 403);
 
         $data = $this->validated($request);
 
@@ -42,14 +42,14 @@ class ShippingMethodController extends Controller
 
     public function edit(ShippingMethod $shippingMethod)
     {
-        abort_if(!auth()->user()->can('edit_shipping_methods'), 403);
+        abort_if(! auth()->user()->can('edit_shipping_methods'), 403);
 
         return view('admin.shipping-methods.edit', compact('shippingMethod'));
     }
 
     public function update(Request $request, ShippingMethod $shippingMethod)
     {
-        abort_if(!auth()->user()->can('edit_shipping_methods'), 403);
+        abort_if(! auth()->user()->can('edit_shipping_methods'), 403);
 
         $data = $this->validated($request);
         $previousCost = $shippingMethod->base_cost;
@@ -67,7 +67,7 @@ class ShippingMethodController extends Controller
 
     public function destroy(ShippingMethod $shippingMethod)
     {
-        abort_if(!auth()->user()->can('delete_shipping_methods'), 403);
+        abort_if(! auth()->user()->can('delete_shipping_methods'), 403);
 
         ActivityLogService::log('shipping_method.delete', $shippingMethod, "حذف روش ارسال «{$shippingMethod->title_fa}»");
 
@@ -79,16 +79,16 @@ class ShippingMethodController extends Controller
     private function validated(Request $request): array
     {
         $data = $request->validate([
-            'title'                   => 'required|string|max:255',
-            'title_fa'                => 'required|string|max:255',
-            'description'             => 'nullable|string|max:1000',
-            'base_cost'               => 'required|integer|min:0',
-            'city'                    => 'nullable|string|max:255',
+            'title' => 'required|string|max:255',
+            'title_fa' => 'required|string|max:255',
+            'description' => 'nullable|string|max:1000',
+            'base_cost' => 'required|integer|min:0',
+            'city' => 'nullable|string|max:255',
             'estimated_delivery_text' => 'nullable|string|max:255',
-            'min_days'                => 'required|integer|min:0|max:255',
-            'max_days'                => 'required|integer|min:0|max:255|gte:min_days',
-            'is_active'               => 'boolean',
-            'sort_order'              => 'required|integer|min:0',
+            'min_days' => 'required|integer|min:0|max:255',
+            'max_days' => 'required|integer|min:0|max:255|gte:min_days',
+            'is_active' => 'boolean',
+            'sort_order' => 'required|integer|min:0',
         ]);
 
         $data['is_active'] = $request->boolean('is_active');

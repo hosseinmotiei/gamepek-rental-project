@@ -3,8 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\QueryException;
 
 class Order extends Model
 {
@@ -14,6 +15,7 @@ class Order extends Model
         'coupon_id', 'shipping_address_id', 'shipping_method_id',
         'shipping_address_snapshot', 'customer_note', 'admin_note',
         'paid_at', 'shipped_at', 'delivered_at',
+        'payment_tracking_code',
     ];
 
     protected function casts(): array
@@ -82,7 +84,7 @@ class Order extends Model
     {
         $snapshot = $this->shipping_address_snapshot;
 
-        if (is_array($snapshot) && !empty($snapshot['full_address'])) {
+        if (is_array($snapshot) && ! empty($snapshot['full_address'])) {
             return (string) $snapshot['full_address'];
         }
 
@@ -92,8 +94,8 @@ class Order extends Model
                 $snapshot['city'] ?? null,
                 $snapshot['district'] ?? null,
                 $snapshot['address_line'] ?? null,
-                !empty($snapshot['plaque']) ? 'پلاک ' . $snapshot['plaque'] : null,
-                !empty($snapshot['unit']) ? 'واحد ' . $snapshot['unit'] : null,
+                ! empty($snapshot['plaque']) ? 'پلاک '.$snapshot['plaque'] : null,
+                ! empty($snapshot['unit']) ? 'واحد '.$snapshot['unit'] : null,
             ]);
 
             if ($parts) {
@@ -122,14 +124,14 @@ class Order extends Model
     {
         return match ($this->status) {
             'pending_payment' => 'در انتظار پرداخت',
-            'paid'            => 'پرداخت شده',
-            'processing'      => 'در حال پردازش',
-            'shipped'         => 'ارسال شده',
-            'delivered'       => 'تحویل داده شده',
-            'cancelled'       => 'لغو شده',
-            'refunded'        => 'مسترد شده',
-            'failed'          => 'ناموفق',
-            default           => $this->status,
+            'paid' => 'پرداخت شده',
+            'processing' => 'در حال پردازش',
+            'shipped' => 'ارسال شده',
+            'delivered' => 'تحویل داده شده',
+            'cancelled' => 'لغو شده',
+            'refunded' => 'مسترد شده',
+            'failed' => 'ناموفق',
+            default => $this->status,
         };
     }
 
@@ -165,11 +167,11 @@ class Order extends Model
                 return static::create(array_merge($attributes, [
                     'order_number' => static::generateOrderNumber(),
                 ]));
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $isOrderNumberCollision = (int) ($e->errorInfo[1] ?? 0) === 1062
                     && str_contains($e->getMessage(), 'order_number');
 
-                if (!$isOrderNumberCollision || $attempt === $maxAttempts) {
+                if (! $isOrderNumberCollision || $attempt === $maxAttempts) {
                     throw $e;
                 }
             }

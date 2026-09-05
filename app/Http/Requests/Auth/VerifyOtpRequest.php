@@ -25,7 +25,7 @@ class VerifyOtpRequest extends FormRequest
 
         $this->merge([
             'mobile' => $toEnglishDigits($this->input('mobile')),
-            'otp'    => $toEnglishDigits($this->input('otp')),
+            'otp' => $toEnglishDigits($this->input('otp')),
         ]);
     }
 
@@ -35,7 +35,7 @@ class VerifyOtpRequest extends FormRequest
 
         return [
             'mobile' => ['required', 'string', 'regex:/^09[0-9]{9}$/'],
-            'otp'    => ['required', 'string', 'digits:'.$otpLength],
+            'otp' => ['required', 'string', 'digits:'.$otpLength],
         ];
     }
 
@@ -45,9 +45,9 @@ class VerifyOtpRequest extends FormRequest
 
         return [
             'mobile.required' => 'شماره موبایل الزامی است.',
-            'mobile.regex'    => 'فرمت شماره موبایل صحیح نیست.',
-            'otp.required'    => 'کد تأیید الزامی است.',
-            'otp.digits'      => "کد تأیید باید {$otpLength} رقم باشد.",
+            'mobile.regex' => 'فرمت شماره موبایل صحیح نیست.',
+            'otp.required' => 'کد تأیید الزامی است.',
+            'otp.digits' => "کد تأیید باید {$otpLength} رقم باشد.",
         ];
     }
 }

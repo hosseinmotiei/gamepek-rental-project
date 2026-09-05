@@ -64,7 +64,7 @@ class MessageController extends Controller
     {
         abort_if($conversation->user_id !== auth()->id(), 403);
 
-        if (!$conversation->isOpen()) {
+        if (! $conversation->isOpen()) {
             return back()->with('error', 'این گفتگو بسته شده و امکان ارسال پیام جدید در آن وجود ندارد.');
         }
 

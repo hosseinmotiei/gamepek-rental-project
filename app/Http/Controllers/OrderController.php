@@ -11,9 +11,7 @@ use Illuminate\View\View;
 
 class OrderController extends Controller
 {
-    public function __construct(private OrderService $orderService)
-    {
-    }
+    public function __construct(private OrderService $orderService) {}
 
     public function index(Request $request): View
     {
@@ -23,7 +21,7 @@ class OrderController extends Controller
         $orders = match ($tab) {
             'delivered' => $user->orders()->with('shippingAddress')->where('status', 'delivered')->latest()->paginate(10),
             'cancelled' => $user->orders()->with('shippingAddress')->whereIn('status', ['cancelled', 'refunded', 'failed'])->latest()->paginate(10),
-            default     => $user->orders()->with('shippingAddress')->whereIn('status', ['pending_payment', 'paid', 'processing', 'shipped'])->latest()->paginate(10),
+            default => $user->orders()->with('shippingAddress')->whereIn('status', ['pending_payment', 'paid', 'processing', 'shipped'])->latest()->paginate(10),
         };
 
         return view('profile.orders', compact('orders', 'tab'));
@@ -63,12 +61,15 @@ class OrderController extends Controller
 
         try {
             $this->orderService->cancelOrder($order);
+
             return response()->json(['success' => true, 'message' => 'سفارش لغو شد.']);
         } catch (QueryException $e) {
             report($e);
+
             return response()->json(['success' => false, 'message' => 'مشکلی پیش آمد. لطفاً دوباره تلاش کنید.'], 500);
         } catch (\Exception $e) {
             report($e);
+
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }

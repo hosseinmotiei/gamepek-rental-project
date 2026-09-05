@@ -12,8 +12,8 @@ class Setting extends Model
     ];
 
     protected $casts = [
-        'options'    => 'array',
-        'is_public'  => 'boolean',
+        'options' => 'array',
+        'is_public' => 'boolean',
         'sort_order' => 'integer',
     ];
 }

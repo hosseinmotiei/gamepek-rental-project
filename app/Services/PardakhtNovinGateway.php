@@ -67,9 +67,9 @@ class PardakhtNovinGateway
     {
         $payload = [
             'CorporationPin' => $this->corporationPin,
-            'Amount'         => $amount,
-            'OrderId'        => $orderId,
-            'CallBackUrl'    => $callbackUrl,
+            'Amount' => $amount,
+            'OrderId' => $orderId,
+            'CallBackUrl' => $callbackUrl,
         ];
 
         try {
@@ -85,10 +85,10 @@ class PardakhtNovinGateway
 
             return [
                 'success' => false,
-                'token'   => null,
-                'status'  => null,
+                'token' => null,
+                'status' => null,
                 'message' => 'خطا در اتصال به درگاه پرداخت.',
-                'raw'     => ['exception' => $e->getMessage()],
+                'raw' => ['exception' => $e->getMessage()],
             ];
         }
 
@@ -102,14 +102,14 @@ class PardakhtNovinGateway
 
         $status = array_find_ci($data, 'Status');
         $status = $status !== null ? (string) $status : null;
-        $token  = array_find_ci($data, 'Token');
+        $token = array_find_ci($data, 'Token');
 
         return [
-            'success' => $response->successful() && $status === self::STATUS_SUCCESS && !empty($token),
-            'token'   => $token,
-            'status'  => $status,
+            'success' => $response->successful() && $status === self::STATUS_SUCCESS && ! empty($token),
+            'token' => $token,
+            'status' => $status,
             'message' => array_find_ci($data, 'Message'),
-            'raw'     => $data,
+            'raw' => $data,
         ];
     }
 
@@ -142,7 +142,7 @@ class PardakhtNovinGateway
     {
         $payload = [
             'CorporationPin' => $this->corporationPin,
-            'Token'          => $token,
+            'Token' => $token,
         ];
 
         try {
@@ -152,25 +152,25 @@ class PardakhtNovinGateway
                 ->post(self::CONFIRM_URL, $payload);
         } catch (\Throwable $e) {
             Log::error('PardakhtNovinGateway::confirm transport failure', [
-                'token'     => $token,
+                'token' => $token,
                 'exception' => $e->getMessage(),
             ]);
 
             return [
-                'success'            => false,
-                'status'             => null,
-                'rrn'                => null,
+                'success' => false,
+                'status' => null,
+                'rrn' => null,
                 'card_number_masked' => null,
-                'raw'                => ['exception' => $e->getMessage()],
+                'raw' => ['exception' => $e->getMessage()],
             ];
         }
 
         $data = $response->json() ?? [];
 
         Log::info('PardakhtNovinGateway::confirm response', [
-            'token'       => $token,
+            'token' => $token,
             'http_status' => $response->status(),
-            'response'    => $data,
+            'response' => $data,
         ]);
 
         $status = array_find_ci($data, 'Status');
@@ -178,11 +178,11 @@ class PardakhtNovinGateway
         $rrn = array_find_ci($data, 'RRN');
 
         return [
-            'success'            => $response->successful() && $status === self::STATUS_SUCCESS,
-            'status'             => $status,
-            'rrn'                => $rrn !== null ? (string) $rrn : null,
+            'success' => $response->successful() && $status === self::STATUS_SUCCESS,
+            'status' => $status,
+            'rrn' => $rrn !== null ? (string) $rrn : null,
             'card_number_masked' => array_find_ci($data, 'CardNumberMasked'),
-            'raw'                => $data,
+            'raw' => $data,
         ];
     }
 
@@ -213,7 +213,7 @@ class PardakhtNovinGateway
     {
         $payload = [
             'CorporationPin' => $this->corporationPin,
-            'Token'          => $token,
+            'Token' => $token,
         ];
 
         try {
@@ -223,25 +223,25 @@ class PardakhtNovinGateway
                 ->post(self::REVERSE_URL, $payload);
         } catch (\Throwable $e) {
             Log::error('PardakhtNovinGateway::reverse transport failure', [
-                'token'     => $token,
+                'token' => $token,
                 'exception' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'token'   => null,
-                'status'  => null,
+                'token' => null,
+                'status' => null,
                 'message' => 'خطا در اتصال به درگاه پرداخت.',
-                'raw'     => ['exception' => $e->getMessage()],
+                'raw' => ['exception' => $e->getMessage()],
             ];
         }
 
         $data = $response->json() ?? [];
 
         Log::info('PardakhtNovinGateway::reverse response', [
-            'token'       => $token,
+            'token' => $token,
             'http_status' => $response->status(),
-            'response'    => $data,
+            'response' => $data,
         ]);
 
         $status = array_find_ci($data, 'Status');
@@ -249,10 +249,10 @@ class PardakhtNovinGateway
 
         return [
             'success' => $response->successful() && $status === self::STATUS_SUCCESS,
-            'token'   => array_find_ci($data, 'Token'),
-            'status'  => $status,
+            'token' => array_find_ci($data, 'Token'),
+            'status' => $status,
             'message' => array_find_ci($data, 'Message'),
-            'raw'     => $data,
+            'raw' => $data,
         ];
     }
 }

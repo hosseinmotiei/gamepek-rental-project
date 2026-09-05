@@ -15,10 +15,10 @@ class QuickCategory extends Model
     protected function casts(): array
     {
         return [
-            'highlight'       => 'boolean',
-            'is_active'       => 'boolean',
+            'highlight' => 'boolean',
+            'is_active' => 'boolean',
             'opens_in_new_tab' => 'boolean',
-            'sort_order'      => 'integer',
+            'sort_order' => 'integer',
         ];
     }
 

@@ -56,7 +56,7 @@ class HomeSectionController extends Controller
         ]);
 
         $data['is_active'] = $request->boolean('is_active');
-        $data['key'] = 'custom_' . Str::slug($data['title'], '_') . '_' . Str::random(6);
+        $data['key'] = 'custom_'.Str::slug($data['title'], '_').'_'.Str::random(6);
 
         $section = HomeSection::create($data);
 

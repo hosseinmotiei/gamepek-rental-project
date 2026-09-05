@@ -4,14 +4,20 @@ namespace App\Providers;
 
 use App\Models\Address;
 use App\Models\Order;
+use App\Models\RentalApplication;
+use App\Models\VerificationMedia;
 use App\Policies\AddressPolicy;
 use App\Policies\OrderPolicy;
+use App\Policies\RentalApplicationPolicy;
+use App\Policies\VerificationMediaPolicy;
 use App\Services\Otp\OtpProviderInterface;
 use App\Services\Otp\Providers\MelipayamakOtpProvider;
 use App\Services\Otp\Providers\NullOtpProvider;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +25,8 @@ class AppServiceProvider extends ServiceProvider
     protected $policies = [
         Address::class => AddressPolicy::class,
         Order::class => OrderPolicy::class,
+        RentalApplication::class => RentalApplicationPolicy::class,
+        VerificationMedia::class => VerificationMediaPolicy::class,
     ];
 
     public function register(): void
@@ -63,5 +71,37 @@ class AppServiceProvider extends ServiceProvider
                 return true;
             }
         });
+
+        $this->configureRateLimiters();
+    }
+
+    /**
+     * Named limiters for the rental chain.
+     *
+     * `throttle:6,10` cannot be used for these. For an authenticated request
+     * ThrottleRequests::resolveRequestSignature() keys on the user id ALONE --
+     * not the route -- so every inline-throttled route shares one bucket per
+     * user. In practice a customer who ran their identity checks, added a bank
+     * account and submitted a guarantee had already spent the allowance and
+     * got a 429 when asking for the signature OTP, locked out halfway through
+     * signing. Each limiter below adds its own prefix to the key, which is
+     * what actually separates the buckets.
+     */
+    private function configureRateLimiters(): void
+    {
+        $perUser = fn (string $name, int $attempts, int $minutes) => RateLimiter::for(
+            $name,
+            fn ($request) => Limit::perMinutes($minutes, $attempts)
+                ->by($name.':'.($request->user()?->id ?: $request->ip())),
+        );
+
+        $perUser('verification-identity', 6, 10);
+        $perUser('verification-media', 10, 10);
+        $perUser('verification-bank', 6, 10);
+        $perUser('rental-guarantee', 6, 10);
+        // Deliberately its own bucket: signing a contract must never be able
+        // to exhaust the login OTP allowance, or vice versa.
+        $perUser('rental-signature-otp', 5, 10);
+        $perUser('rental-signature', 5, 10);
     }
 }

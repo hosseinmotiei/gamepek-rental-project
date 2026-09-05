@@ -12,9 +12,7 @@ use Illuminate\Support\Facades\Session;
 
 class CartService
 {
-    public function __construct(private InventoryService $inventoryService)
-    {
-    }
+    public function __construct(private InventoryService $inventoryService) {}
 
     public function getOrCreateCart(): Cart
     {
@@ -32,7 +30,7 @@ class CartService
         }
 
         $sessionId = Session::get('cart_session_id');
-        if (!$sessionId) {
+        if (! $sessionId) {
             $sessionId = uniqid('guest_', true);
             Session::put('cart_session_id', $sessionId);
         }
@@ -44,7 +42,7 @@ class CartService
     {
         $product = Product::active()->find($productId);
 
-        if (!$product) {
+        if (! $product) {
             throw new \Exception('محصول پیدا نشد.', 404);
         }
 
@@ -61,7 +59,7 @@ class CartService
             throw new \Exception('قیمت این محصول هنوز ثبت نشده است.', 422);
         }
 
-        if (!$product->isInStock()) {
+        if (! $product->isInStock()) {
             throw new \Exception('موجودی این محصول کافی نیست.', 422);
         }
 
@@ -85,9 +83,9 @@ class CartService
             $this->inventoryService->assertPhysicalStockAvailable($product, $quantity);
 
             $item = CartItem::create([
-                'cart_id'    => $cart->id,
+                'cart_id' => $cart->id,
                 'product_id' => $productId,
-                'quantity'   => $quantity,
+                'quantity' => $quantity,
                 'selected_options' => $selectedOptions,
                 'options_hash' => $optionsHash,
                 'options_price_modifier' => $optionsPriceModifier,
@@ -120,7 +118,7 @@ class CartService
             $chosen = $selectedOptions[$group->title] ?? null;
             $matched = $group->values->firstWhere('label', $chosen);
 
-            if (!$matched) {
+            if (! $matched) {
                 $matched = $group->values->firstWhere('is_default', true) ?? $group->values->first();
             }
 
@@ -139,6 +137,7 @@ class CartService
             return md5('');
         }
         ksort($selectedOptions);
+
         return md5(json_encode($selectedOptions));
     }
 
@@ -147,17 +146,18 @@ class CartService
         $cart = $this->getOrCreateCart();
         $item = $cart->items()->find($cartItemId);
 
-        if (!$item) {
+        if (! $item) {
             throw new \Exception('آیتم سبد خرید پیدا نشد.', 404);
         }
 
         if ($quantity <= 0) {
             $item->delete();
+
             return $item;
         }
 
         $product = $item->product;
-        if (!$product) {
+        if (! $product) {
             $item->delete();
             throw new \Exception('این محصول دیگر در دسترس نیست.', 422);
         }
@@ -165,7 +165,7 @@ class CartService
         // BUG-012: addItem() only ever adds active products (Product::active()),
         // but a product can be deactivated after it's already in the cart --
         // updateItem() must reject the same way, not just the final checkout gate.
-        if (!$product->is_active) {
+        if (! $product->is_active) {
             throw new \Exception('این محصول دیگر در دسترس نیست.', 422);
         }
 
@@ -176,6 +176,7 @@ class CartService
         $this->inventoryService->assertPhysicalStockAvailable($product, $quantity);
 
         $item->update(['quantity' => $quantity]);
+
         return $item->fresh()->load('product');
     }
 
@@ -184,7 +185,7 @@ class CartService
         $cart = $this->getOrCreateCart();
         $item = $cart->items()->find($cartItemId);
 
-        if (!$item) {
+        if (! $item) {
             throw new \Exception('آیتم سبد خرید پیدا نشد.', 404);
         }
 
@@ -195,12 +196,12 @@ class CartService
     {
         $coupon = Coupon::where('code', strtoupper($code))->first();
 
-        if (!$coupon || !$coupon->isValid()) {
+        if (! $coupon || ! $coupon->isValid()) {
             throw new \Exception('کد تخفیف نامعتبر یا منقضی شده است.', 422);
         }
 
         // Per-user-limited coupons require an authenticated user to enforce the limit
-        if ($coupon->per_user_limit && !Auth::check()) {
+        if ($coupon->per_user_limit && ! Auth::check()) {
             throw new \Exception('برای استفاده از این کد تخفیف باید وارد حساب کاربری خود شوید.', 401);
         }
 
@@ -235,7 +236,7 @@ class CartService
     public function clearUserCart(int $userId): void
     {
         $cart = Cart::where('user_id', $userId)->first();
-        if (!$cart) {
+        if (! $cart) {
             return;
         }
         $cart->items()->delete();
@@ -258,10 +259,10 @@ class CartService
         }
 
         return [
-            'cart'       => $cart,
-            'items'      => $items,
-            'subtotal'   => $subtotal,
-            'discount'   => $discount,
+            'cart' => $cart,
+            'items' => $items,
+            'subtotal' => $subtotal,
+            'discount' => $discount,
             'items_count' => $items->sum('quantity'),
         ];
     }
@@ -270,11 +271,15 @@ class CartService
     {
         $guestCart = Cart::where('session_id', $sessionId)->with('items.product')->first();
 
-        if (!$guestCart) return;
+        if (! $guestCart) {
+            return;
+        }
 
         foreach ($guestCart->items as $guestItem) {
             $product = $guestItem->product;
-            if (!$product) continue;
+            if (! $product) {
+                continue;
+            }
 
             // Match on options_hash too -- otherwise merging would combine
             // quantities across two different variant selections of the
@@ -284,7 +289,7 @@ class CartService
                 ->where('product_id', $guestItem->product_id)
                 ->where('options_hash', $guestItem->options_hash)
                 ->first();
-            $mergedQty    = ($existingItem ? $existingItem->quantity : 0) + $guestItem->quantity;
+            $mergedQty = ($existingItem ? $existingItem->quantity : 0) + $guestItem->quantity;
 
             // Cap merged quantity at available stock
             if ($product->stock_quantity > 0) {
@@ -294,15 +299,17 @@ class CartService
             // Enforce the same per-item quantity maximum as the Add/Update cart request contract
             $mergedQty = min($mergedQty, config('rental.cart.max_quantity_per_item', 10));
 
-            if ($mergedQty <= 0) continue;
+            if ($mergedQty <= 0) {
+                continue;
+            }
 
             if ($existingItem) {
                 $existingItem->update(['quantity' => $mergedQty]);
             } else {
                 CartItem::create([
-                    'cart_id'    => $userCart->id,
+                    'cart_id' => $userCart->id,
                     'product_id' => $guestItem->product_id,
-                    'quantity'   => $mergedQty,
+                    'quantity' => $mergedQty,
                     'selected_options' => $guestItem->selected_options,
                     'options_hash' => $guestItem->options_hash,
                     'options_price_modifier' => $guestItem->options_price_modifier,

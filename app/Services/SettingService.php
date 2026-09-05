@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 class SettingService
 {
     private const CACHE_KEY = 'gamepek_settings';
+
     private const CACHE_TTL = 3600;
 
     public function __construct(private ImageUploadService $imageUploads) {}
@@ -17,6 +18,7 @@ class SettingService
     public function get(string $group, string $key, mixed $default = null): mixed
     {
         $all = $this->all();
+
         return $all["{$group}.{$key}"] ?? $default;
     }
 
@@ -37,8 +39,8 @@ class SettingService
 
     /**
      * @return string[] labels of settings whose new image failed to upload
-     *                   (existing value was preserved for each) -- empty if
-     *                   everything succeeded.
+     *                  (existing value was preserved for each) -- empty if
+     *                  everything succeeded.
      */
     public function updateGroup(string $group, array $values, array $files = []): array
     {
@@ -54,6 +56,7 @@ class SettingService
                         // Keep the existing value -- do not delete the old
                         // file or record a failed upload as the new value.
                         $failedLabels[] = $setting->label ?? $key;
+
                         continue;
                     }
                     if ($setting->value && Storage::disk('public')->exists($setting->value)) {

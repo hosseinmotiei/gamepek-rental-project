@@ -74,6 +74,13 @@ class UserSeeder extends Seeder
             'view_activity_logs',
             // Messages (customer support)
             'view_messages', 'reply_messages', 'close_conversations',
+            // Rental chain (stages 1-3): identity, bank ownership, guarantees,
+            // contracts, applications, audit trail and SMS.
+            'view_verifications', 'manage_verifications',
+            'view_guarantees', 'manage_guarantees',
+            'view_contracts', 'manage_contracts',
+            'view_rental_applications', 'manage_rental_applications',
+            'view_audit_events', 'view_sms', 'refund_payments',
         ];
         $permissions = [];
         foreach ($permissionNames as $name) {
@@ -106,6 +113,8 @@ class UserSeeder extends Seeder
             'view_coupons',
             'view_shipping_methods',
             'view_reports', 'view_sales_reports', 'view_order_reports', 'export_reports',
+            'view_rental_applications', 'manage_rental_applications',
+            'view_verifications', 'view_guarantees', 'view_contracts',
         ]));
 
         $roles['content_manager']->syncPermissions($pick([
@@ -125,6 +134,7 @@ class UserSeeder extends Seeder
             'view_reports', 'view_order_reports', 'view_user_reports',
             'view_activity_logs',
             'view_messages', 'reply_messages', 'close_conversations',
+            'view_rental_applications', 'view_contracts',
         ]));
 
         // ── Production admin (OTP-based, no password) ──────────────────────────
@@ -138,7 +148,7 @@ class UserSeeder extends Seeder
         // ── Development super-admin (email + password) ─────────────────────────
         // Local/testing only, so weak credentials can never reach production.
         if (app()->environment(['local', 'testing'])) {
-            $devEmail    = env('DEV_ADMIN_EMAIL', 'admin@gamepek-rental.local');
+            $devEmail = env('DEV_ADMIN_EMAIL', 'admin@gamepek-rental.local');
             $devPassword = env('DEV_ADMIN_PASSWORD', 'password');
 
             $devAdmin = User::firstOrCreate(

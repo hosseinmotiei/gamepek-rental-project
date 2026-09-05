@@ -31,3 +31,4 @@ yarn-error.log
 !/bootstrap/cache/.gitignore
 /graphify-out
 /wallet-grok
+.phpunit.cache

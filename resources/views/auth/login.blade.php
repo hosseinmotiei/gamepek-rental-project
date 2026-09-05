@@ -61,7 +61,7 @@
                 <input type="tel" id="phone-input" inputmode="numeric" class="peer w-full border border-gray-300 rounded-xl px-4 pt-6 pb-2 text-sm text-gray-800 outline-none focus:border-brandBlue focus:border-2 transition-all placeholder-transparent text-left" placeholder="09123456789" dir="ltr" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
                 <label class="absolute right-4 top-4 text-gray-400 text-xs transition-all pointer-events-none">شماره موبایل</label>
             </div>
-            <p class="text-[10px] text-gray-400 mt-auto mb-4 text-center leading-relaxed px-4">ورود شما به معنای پذیرش <a href="#" class="text-brandBlue">شرایط گیم‌پک</a> است</p>
+            <p class="text-[10px] text-gray-400 mt-auto mb-4 text-center leading-relaxed px-4">ورود شما به معنای پذیرش <a href="{{ route('terms') }}" class="text-brandBlue">شرایط گیم‌پک</a> است</p>
             <button id="send-otp-btn" onclick="submitPhone()" class="w-full bg-brandBlue text-white font-bold py-3.5 rounded-xl hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20 text-sm mb-6 disabled:opacity-60">{{ setting('auth.send_otp_button_text', 'ورود به گیم‌پک') }}</button>
         </section>
 

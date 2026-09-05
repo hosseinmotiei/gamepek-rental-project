@@ -31,7 +31,7 @@ class ImageUploadService
     {
         $path = $file->store($directory, $disk);
 
-        if (!$path || !Storage::disk($disk)->exists($path)) {
+        if (! $path || ! Storage::disk($disk)->exists($path)) {
             Log::error('Image upload failed: file not verified on disk after store().', [
                 'disk' => $disk,
                 'directory' => $directory,

@@ -24,8 +24,8 @@ class BannerController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('subtitle', 'like', "%{$search}%")
-                  ->orWhere('badge', 'like', "%{$search}%");
+                    ->orWhere('subtitle', 'like', "%{$search}%")
+                    ->orWhere('badge', 'like', "%{$search}%");
             });
         }
 

@@ -1,9 +1,14 @@
 <?php
 
+use App\Http\Middleware\AssignCorrelationId;
+use App\Http\Middleware\EnsureIsAdmin;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Auth\AuthenticationException;
+use Illuminate\Http\Exceptions\PostTooLargeException;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -15,8 +20,14 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
-            'admin' => \App\Http\Middleware\EnsureIsAdmin::class,
+            'admin' => EnsureIsAdmin::class,
         ]);
+
+        // Runs first on every web and API request so that every log line and
+        // every audit_events row produced while handling it shares one
+        // correlation id. Prepended (not appended) so it is already bound
+        // before session/auth middleware can emit anything auditable.
+        $middleware->prepend(AssignCorrelationId::class);
 
         $middleware->validateCsrfTokens(except: [
             'api/*',
@@ -37,7 +48,7 @@ return Application::configure(basePath: dirname(__DIR__))
             return redirect()->guest(route('auth.login'));
         });
 
-        $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, $request) {
+        $exceptions->render(function (PostTooLargeException $e, $request) {
             $message = 'حجم فایل ارسالی بیش از حد مجاز سرور است. لطفاً فایل کوچک‌تری انتخاب کنید یا با پشتیبانی تماس بگیرید.';
 
             if ($request->expectsJson()) {
@@ -60,8 +71,8 @@ return Application::configure(basePath: dirname(__DIR__))
             if (
                 $request->expectsJson()
                 && app()->isProduction()
-                && !($e instanceof \Illuminate\Validation\ValidationException)
-                && !($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface)
+                && ! ($e instanceof ValidationException)
+                && ! ($e instanceof HttpExceptionInterface)
             ) {
                 return response()->json([
                     'success' => false,

@@ -39,7 +39,7 @@ class SendOtpRequest extends FormRequest
     {
         return [
             'mobile.required' => 'شماره موبایل الزامی است.',
-            'mobile.regex'    => 'فرمت شماره موبایل صحیح نیست.',
+            'mobile.regex' => 'فرمت شماره موبایل صحیح نیست.',
         ];
     }
 }

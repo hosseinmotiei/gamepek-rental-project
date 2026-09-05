@@ -71,7 +71,7 @@ class RentalDemoProductSeeder extends Seeder
             ], $data['blocked']);
 
             $gallery = array_map(
-                fn (array $image) => self::IMAGE_DIR . '/' . basename($image['src']),
+                fn (array $image) => self::IMAGE_DIR.'/'.basename($image['src']),
                 $data['images']
             );
 
@@ -81,7 +81,7 @@ class RentalDemoProductSeeder extends Seeder
                     'category_id' => $category->id,
                     'title_fa' => $data['name'],
                     'title_en' => $data['model'],
-                    'sku' => 'RNT-' . strtoupper(str_replace('-', '', $data['slug'])),
+                    'sku' => 'RNT-'.strtoupper(str_replace('-', '', $data['slug'])),
                     'short_description' => $data['conditionSummary'],
                     'description' => $data['conditionSummary'],
                     'brand' => 'Sony',
@@ -146,7 +146,7 @@ class RentalDemoProductSeeder extends Seeder
             );
         }
 
-        $this->command->info('Seeded ' . count($this->products()) . ' demo rental consoles (local fixtures).');
+        $this->command->info('Seeded '.count($this->products()).' demo rental consoles (local fixtures).');
     }
 
     /**

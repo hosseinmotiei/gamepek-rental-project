@@ -51,13 +51,13 @@ class RentalPricingService
      * All money arguments are whole Toman. `$deposit` is returned on the
      * quote but never added to `payableNow` — see RentalQuote.
      *
-     * @param  int   $dailyRate             per-day rental price of the item
-     * @param  int   $days                  rental length in days, inclusive of the start day
-     * @param  int   $extraControllerDaily  per-day price of a second controller, 0 if unavailable
-     * @param  bool  $withExtraController   whether the customer added that second controller
-     * @param  int   $gameFee               one-off fee for a paid game title, 0 when bundled free
-     * @param  int   $deliveryFee           courier fee, 0 for in-person pickup
-     * @param  int   $deposit               refundable security hold
+     * @param  int  $dailyRate  per-day rental price of the item
+     * @param  int  $days  rental length in days, inclusive of the start day
+     * @param  int  $extraControllerDaily  per-day price of a second controller, 0 if unavailable
+     * @param  bool  $withExtraController  whether the customer added that second controller
+     * @param  int  $gameFee  one-off fee for a paid game title, 0 when bundled free
+     * @param  int  $deliveryFee  courier fee, 0 for in-person pickup
+     * @param  int  $deposit  refundable security hold
      */
     public function quote(
         int $dailyRate,

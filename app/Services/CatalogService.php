@@ -28,42 +28,60 @@ class CatalogService
     {
         $query = Product::with('category')->active();
 
-        if (!empty($filters['q'])) {
+        if (! empty($filters['q'])) {
             $query->search($filters['q']);
         }
 
-        if (!empty($filters['category_id'])) {
+        if (! empty($filters['category_id'])) {
             $query->where('category_id', $filters['category_id']);
         }
 
-        if (!empty($filters['stock'])) {
+        if (! empty($filters['stock'])) {
             $query->where('stock_status', $filters['stock']);
-        } elseif (!empty($filters['in_stock'])) {
+        } elseif (! empty($filters['in_stock'])) {
             $query->inStock();
         }
 
-        if (!empty($filters['min_price'])) {
+        if (! empty($filters['min_price'])) {
             $query->where('price', '>=', (int) $filters['min_price']);
         }
-        if (!empty($filters['max_price'])) {
+        if (! empty($filters['max_price'])) {
             $query->where('price', '<=', (int) $filters['max_price']);
         }
 
-        if (!empty($filters['color'])) {
+        if (! empty($filters['color'])) {
             $query->where('color', $filters['color']);
         }
-        if (!empty($filters['brand'])) {
+        if (! empty($filters['brand'])) {
             $query->where('brand', $filters['brand']);
         }
 
-        if (!empty($filters['featured'])) {
+        if (! empty($filters['featured'])) {
             $query->where('is_featured', true);
         }
-        if (!empty($filters['best_seller'])) {
+        if (! empty($filters['best_seller'])) {
             $query->where('is_best_seller', true);
         }
-        if (!empty($filters['flash_sale'])) {
+        if (! empty($filters['flash_sale'])) {
             $query->flashSale();
+        }
+
+        // Rental date window. Two independent conditions, both real:
+        //   1. the item must actually be rentable (it carries a `_rental`
+        //      blob -- Support\Rental\RentalItem::supports() reads the same
+        //      key), so a buy-only product never appears in a date search;
+        //   2. no blocking reservation may overlap the requested range.
+        // Availability outside reservations (maintenance, owner holds) is
+        // still an undecided domain question -- see Product::isInStock().
+        if (! empty($filters['rental_from']) && ! empty($filters['rental_to'])) {
+            $from = $filters['rental_from'];
+            $to = $filters['rental_to'];
+
+            $query->whereNotNull('attributes->_rental')
+                ->whereDoesntHave('rentalReservations', fn ($q) => $q
+                    ->blocking()
+                    ->where('start_date', '<=', $to)
+                    ->where('end_date', '>=', $from));
         }
 
         $this->applyAttributeFacets($query, $filters['attributes'] ?? []);
@@ -86,7 +104,7 @@ class CatalogService
         $allowed = array_keys($this->availableFacets());
 
         foreach ($selected as $key => $value) {
-            if ($value === null || $value === '' || !in_array($key, $allowed, true)) {
+            if ($value === null || $value === '' || ! in_array($key, $allowed, true)) {
                 continue;
             }
 
@@ -121,12 +139,12 @@ class CatalogService
     private function applySorting(Builder $query, string $sort): Builder
     {
         return match ($sort) {
-            'cheapest'     => $query->orderByRaw('COALESCE(sale_price, price) ASC'),
-            'expensive'    => $query->orderByRaw('COALESCE(sale_price, price) DESC'),
+            'cheapest' => $query->orderByRaw('COALESCE(sale_price, price) ASC'),
+            'expensive' => $query->orderByRaw('COALESCE(sale_price, price) DESC'),
             'best_selling' => $query->orderBy('sales_count', 'desc'),
-            'most_viewed'  => $query->orderBy('views_count', 'desc'),
-            'discount'     => $query->orderByRaw('(price - COALESCE(sale_price, price)) DESC'),
-            default        => $query->orderBy('created_at', 'desc'), // newest
+            'most_viewed' => $query->orderBy('views_count', 'desc'),
+            'discount' => $query->orderByRaw('(price - COALESCE(sale_price, price)) DESC'),
+            default => $query->orderBy('created_at', 'desc'), // newest
         };
     }
 
@@ -144,9 +162,20 @@ class CatalogService
     public function getHomePageData(): array
     {
         return [
-            'flash_sale'   => Product::flashSale()->with('category')->limit(8)->get(),
+            'flash_sale' => Product::flashSale()->with('category')->limit(8)->get(),
             'best_sellers' => Product::bestSeller()->with('category')->limit(8)->get(),
-            'featured'     => Product::featured()->with('category')->limit(8)->get(),
+            'featured' => Product::featured()->with('category')->limit(8)->get(),
+
+            // Rentable devices for the homepage's suggested row. Featured is
+            // an editorial flag an admin may never have set, so this asks the
+            // real question instead: does the item carry a `_rental` blob?
+            // Same key Support\Rental\RentalItem::supports() reads.
+            'rentable' => Product::active()
+                ->whereNotNull('attributes->_rental')
+                ->with('category')
+                ->latest('id')
+                ->limit(8)
+                ->get(),
         ];
     }
 

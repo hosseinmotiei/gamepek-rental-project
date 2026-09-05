@@ -18,6 +18,14 @@
     // A rentable device is priced per day and reserved from its own page, so
     // it never shows a buy price or an add-to-cart button here.
     $cardRental = \App\Support\Rental\RentalItem::for($product);
+
+    // Carry the rental window the visitor already chose into the product
+    // page, which reads `from`/`to` from the query string instead of asking
+    // for the dates a second time.
+    $cardUrl = route('products.show', array_merge(
+        ['slug' => $product->slug],
+        array_filter(request()->only('city', 'from', 'to')),
+    ));
 @endphp
 <div class="bg-white rounded-2xl p-3 md:p-4 shadow-sm border border-gray-100 flex flex-col group relative min-w-0 overflow-hidden">
 
@@ -27,7 +35,7 @@
         <span class="absolute top-3 left-3 bg-flashRed text-white text-[10px] font-bold px-2 py-1 rounded z-10">{{ persian_number($product->discount_percent) }}٪</span>
     @endif
 
-    <a href="{{ route('products.show', $product->slug) }}">
+    <a href="{{ $cardUrl }}">
         <img src="{{ product_image_url($product) }}"
              alt="{{ $product->title_fa }}"
              loading="lazy"
@@ -45,7 +53,7 @@
                 <span class="text-[10px] md:text-xs text-gray-500"> تومان / روز</span>
             </div>
             @if($cardRental->isRentable())
-            <a href="{{ route('products.show', $product->slug) }}"
+            <a href="{{ $cardUrl }}"
                class="block text-center w-full font-bold py-2 rounded-xl transition-colors text-xs md:text-sm bg-brandGray text-brandBlue group-hover:bg-brandBlue group-hover:text-white">
                 <i class="fa-solid fa-calendar-check ml-1"></i> مشاهده و رزرو
             </a>

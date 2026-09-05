@@ -1,7 +1,10 @@
-# GamePek Rental — Persistent Project Context
+# CLAUDE.md
 
-This file is loaded every session. Keep it short — details live in the
-path-scoped rules under `.claude/rules/` and in `README.md`.
+This file provides guidance to Claude Code (claude.ai/code) when working with
+code in this repository.
+
+Keep it short — details live in the path-scoped rules under `.claude/rules/`
+and in `README.md`.
 
 ## Identity
 
@@ -14,6 +17,22 @@ path-scoped rules under `.claude/rules/` and in `README.md`.
   `package.json`, no Vite.
 - Separate application and separate database (`gamepek_rental`) from the
   Store. Never read or write the Store's `gamepek` database from here.
+
+## Commands
+
+```bash
+composer install
+php artisan migrate            # never migrate:fresh / migrate:refresh / db:wipe
+php artisan db:seed            # users, settings, shipping, home sections, menu — no catalog
+php artisan serve
+vendor/bin/pint                # only formatter/linter configured
+php artisan db:seed --class=RentalDemoProductSeeder   # local demo rental consoles
+```
+
+There is **no test suite** — `tests/` does not exist, only the phpunit dev
+dependency. Verification is manual: exercise the affected page and the admin
+screen that touches the same service. If you add tests, create the directory
+and the `Tests\` autoload target already declared in `composer.json`.
 
 ## Relationship to GamePek Store
 
@@ -33,23 +52,48 @@ Digital codes, blog, reviews, product questions, wishlist and the GTA VI /
 PSN gift-card campaigns are Store features and were not cloned. Do not
 reintroduce them by copying from `gamepek-backend`.
 
-## Rental domain — not yet designed
+## Rental domain — read-only slice only
 
-Rental items, owner accounts, availability calendars, reservations, deposits,
+A **display and pricing** slice exists. Everything that mutates state is
+still unimplemented: reservations, owner accounts, deposits held or refunded,
 verification (video / AI / admin), contracts, cheques and promissory notes,
 pickup/return, damage handling, owner settlement, cancellation policy and SMS
-lifecycle notifications are **all still unimplemented**. Do not invent rules
-for any of them. The catalog entity is still named `Product`/`products`
-because renaming it is a domain decision that has not been made.
+lifecycle notifications. Do not invent rules for any of them. The catalog
+entity is still named `Product`/`products` because renaming it is a domain
+decision that has not been made.
 
-Key seams built for that later work:
+What is built (ported from the `Grok-show` prototype, all pure/read-only):
 
-- `Product::isInStock()` — the single availability check. Rental replaces its
-  body with a date-range query; no call site changes.
+- `products.attributes['_rental']` (JSON) holds every rental fact. There are
+  no rental tables and no rental columns. `Support\Rental\RentalItem` is the
+  **single** reader of that blob — `supports()` answers "is this rentable",
+  typed accessors expose the rest. Never index into `attributes['_rental']`
+  anywhere else.
+- `RentalPricingService::quote()` is the authoritative cost breakdown,
+  returning an immutable `RentalQuote`. Duration discount tiers live in
+  `config('rental.pricing.duration_discounts')` and are a **placeholder** —
+  not owner-approved pricing. `deposit` is never part of `payableNow`.
+  `partials/rental-panel.blade.php` mirrors this arithmetic in JS for live
+  preview only; the charged figure must come from the service.
+- `Support\Rental\Availability` / `RentalCalendar` do interval-overlap day
+  classification against `BlockedRange` values passed in. They never query —
+  where blocked ranges come from is an undecided domain question.
+- `Support\Rental\Jalali` is a self-contained Jalali/Gregorian converter used
+  by the rental calendar. The rest of the app still renders Gregorian.
+- `CartService::addItem()` **rejects** rentable products with a Persian
+  error: a rental cannot go through the buy flow. Guarded once in the service,
+  not per view.
+- `RentalDemoProductSeeder` is local fixtures with invented prices, health
+  scores and reviews. Not in `DatabaseSeeder`; refuses to run in production.
+
+Key seams for the later work:
+
+- `Product::isInStock()` — the single availability check, still scalar.
+  Rental replaces its body with a date-range query; no call site changes.
 - `InventoryService` — scalar stock locking; becomes interval-overlap.
 - `CatalogService::availableFacets()` — listing filters are declared in
-  `config('rental.catalog.facets')` and per-category `categories.filters`,
-  never hardcoded in a view.
+  `config('rental.catalog.facets')` (currently empty) and per-category
+  `categories.filters`, never hardcoded in a view.
 - `ActivityLog` / `UserActivityLog` — the seams for consent, retention and
   admin access logging when verification data arrives.
 - `products.attributes` (JSON) + `product_option_*` — per-item fields with no
@@ -60,10 +104,14 @@ Key seams built for that later work:
 - **No live payment gateway.** `PAYMENT_GATEWAY=mock`. Pardakht Novin config
   exists (carried from the Store) but no rental merchant credentials are set.
   Do not wire a real gateway until the owner confirms credentials.
-- **No live SMS provider.** `MELIPAYAMAK_API_KEY` is empty and OTP send fails
-  closed with a Persian message. SMS exists only as OTP delivery
-  (`OtpProviderInterface`) — there is no general "send a message" seam yet;
-  rental event notifications will need one.
+- **No live SMS provider.** `MELIPAYAMAK_API_KEY` is empty; `NullOtpProvider`
+  delivers OTP locally so login works in development. SMS exists only as OTP
+  delivery (`OtpProviderInterface`) — there is no general "send a message"
+  seam yet; rental event notifications will need one.
+- **Wallet is a frontend-only prototype.** The profile wallet tab (balance,
+  top-up, withdraw, history) is localStorage in Blade; there is no wallet
+  column, table or service, and `Admin\WalletController` is a nav placeholder.
+  Do not treat any wallet figure as real money.
 
 ## Safety
 

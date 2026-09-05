@@ -31,6 +31,7 @@ class CartItem extends Model
     public function getEffectiveUnitPriceAttribute(): int
     {
         $base = $this->product?->effective_price ?? 0;
+
         return max(0, (int) $base + (int) ($this->options_price_modifier ?? 0));
     }
 

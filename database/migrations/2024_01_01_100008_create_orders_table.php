@@ -14,7 +14,7 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->enum('status', [
                 'pending_payment', 'paid', 'processing',
-                'shipped', 'delivered', 'cancelled', 'refunded', 'failed'
+                'shipped', 'delivered', 'cancelled', 'refunded', 'failed',
             ])->default('pending_payment');
             $table->enum('payment_status', ['unpaid', 'paid', 'failed', 'refunded'])->default('unpaid');
             $table->unsignedBigInteger('subtotal');

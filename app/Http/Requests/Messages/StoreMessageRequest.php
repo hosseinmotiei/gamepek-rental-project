@@ -22,7 +22,7 @@ class StoreMessageRequest extends FormRequest
     {
         return [
             'body.required' => 'متن پیام نمی‌تواند خالی باشد.',
-            'body.max'      => 'متن پیام نمی‌تواند بیشتر از ۵۰۰۰ کاراکتر باشد.',
+            'body.max' => 'متن پیام نمی‌تواند بیشتر از ۵۰۰۰ کاراکتر باشد.',
         ];
     }
 }

@@ -15,22 +15,22 @@ class Banner extends Model
     protected function casts(): array
     {
         return [
-            'is_active'       => 'boolean',
+            'is_active' => 'boolean',
             'opens_in_new_tab' => 'boolean',
-            'starts_at'       => 'datetime',
-            'ends_at'         => 'datetime',
+            'starts_at' => 'datetime',
+            'ends_at' => 'datetime',
         ];
     }
 
     public function scopeActive($query)
     {
         return $query->where('is_active', true)
-                     ->where(function ($q) {
-                         $q->whereNull('starts_at')->orWhere('starts_at', '<=', now());
-                     })
-                     ->where(function ($q) {
-                         $q->whereNull('ends_at')->orWhere('ends_at', '>=', now());
-                     });
+            ->where(function ($q) {
+                $q->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+            })
+            ->where(function ($q) {
+                $q->whereNull('ends_at')->orWhere('ends_at', '>=', now());
+            });
     }
 
     public function scopeForPosition($query, string $position)
@@ -46,12 +46,13 @@ class Banner extends Model
             return null;
         }
 
-        if (str_starts_with($link, '/') && !str_starts_with($link, '//')) {
+        if (str_starts_with($link, '/') && ! str_starts_with($link, '//')) {
             return $link;
         }
 
         if (filter_var($link, FILTER_VALIDATE_URL)) {
             $scheme = strtolower((string) parse_url($link, PHP_URL_SCHEME));
+
             return in_array($scheme, ['http', 'https'], true) ? $link : null;
         }
 

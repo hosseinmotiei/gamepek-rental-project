@@ -1,6 +1,8 @@
 <?php
 
-if (!function_exists('array_find_ci')) {
+use App\Services\SettingService;
+
+if (! function_exists('array_find_ci')) {
     /**
      * Case-insensitive array key lookup. Some external APIs (e.g. Pardakht
      * Novin) return field names in different casing than their own
@@ -19,7 +21,7 @@ if (!function_exists('array_find_ci')) {
     }
 }
 
-if (!function_exists('setting')) {
+if (! function_exists('setting')) {
     /**
      * Get a setting value by "group.key" dot notation.
      * Returns $default if the setting does not exist.
@@ -29,11 +31,12 @@ if (!function_exists('setting')) {
     function setting(string $dotKey, mixed $default = null): mixed
     {
         [$group, $key] = array_pad(explode('.', $dotKey, 2), 2, '');
-        return app(\App\Services\SettingService::class)->get($group, $key, $default);
+
+        return app(SettingService::class)->get($group, $key, $default);
     }
 }
 
-if (!function_exists('media_url')) {
+if (! function_exists('media_url')) {
     /**
      * Single, centralized image/media URL resolver for the whole app --
      * products, banners, categories, blog posts, settings images, anything
@@ -52,7 +55,7 @@ if (!function_exists('media_url')) {
      */
     function media_url(?string $path, string $placeholder = 'images/product-placeholder.svg'): string
     {
-        if (!$path) {
+        if (! $path) {
             return preg_match('/^https?:\/\//i', $placeholder) ? $placeholder : asset($placeholder);
         }
 
@@ -60,11 +63,11 @@ if (!function_exists('media_url')) {
             return $path;
         }
 
-        return asset('storage/' . ltrim($path, '/'));
+        return asset('storage/'.ltrim($path, '/'));
     }
 }
 
-if (!function_exists('setting_image_url')) {
+if (! function_exists('setting_image_url')) {
     /**
      * Get the public URL for an image setting.
      * Returns null if no image is stored.
@@ -72,67 +75,71 @@ if (!function_exists('setting_image_url')) {
     function setting_image_url(string $dotKey): ?string
     {
         $path = setting($dotKey);
+
         return $path ? media_url($path) : null;
     }
 }
 
-if (!function_exists('persian_number')) {
+if (! function_exists('persian_number')) {
     function persian_number(int|float|string $number, int $decimals = 0): string
     {
         $formatted = number_format((float) $number, $decimals, '.', ',');
-        return strtr($formatted, ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']);
+
+        return strtr($formatted, ['0' => '۰', '1' => '۱', '2' => '۲', '3' => '۳', '4' => '۴', '5' => '۵', '6' => '۶', '7' => '۷', '8' => '۸', '9' => '۹']);
     }
 }
 
-if (!function_exists('status_label')) {
+if (! function_exists('status_label')) {
     function status_label(string $type, string $status): string
     {
         $labels = [
             'order' => [
                 'pending_payment' => 'در انتظار پرداخت',
-                'paid'            => 'پرداخت شده',
-                'processing'      => 'در حال پردازش',
-                'shipped'         => 'ارسال شده',
-                'delivered'       => 'تحویل داده شده',
-                'cancelled'       => 'لغو شده',
-                'refunded'        => 'مرجوع شده',
-                'failed'          => 'ناموفق',
+                'paid' => 'پرداخت شده',
+                'processing' => 'در حال پردازش',
+                'shipped' => 'ارسال شده',
+                'delivered' => 'تحویل داده شده',
+                'cancelled' => 'لغو شده',
+                'refunded' => 'مرجوع شده',
+                'failed' => 'ناموفق',
             ],
             'product_stock' => [
-                'in_stock'     => 'موجود',
+                'in_stock' => 'موجود',
                 'out_of_stock' => 'ناموجود',
-                'coming_soon'  => 'بزودی',
-                'preorder'     => 'پیش‌خرید',
+                'coming_soon' => 'بزودی',
+                'preorder' => 'پیش‌خرید',
             ],
             'digital_code' => [
                 'available' => 'آماده فروش',
-                'reserved'  => 'رزروشده',
-                'sold'      => 'فروخته‌شده',
-                'disabled'  => 'غیرفعال',
+                'reserved' => 'رزروشده',
+                'sold' => 'فروخته‌شده',
+                'disabled' => 'غیرفعال',
             ],
         ];
+
         return $labels[$type][$status] ?? $status;
     }
 }
 
-
-if (!function_exists('persian_digits')) {
+if (! function_exists('persian_digits')) {
     function persian_digits(int|float|string|null $value): string
     {
-        if ($value === null) return '';
-        return strtr((string) $value, ['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']);
+        if ($value === null) {
+            return '';
+        }
+
+        return strtr((string) $value, ['0' => '۰', '1' => '۱', '2' => '۲', '3' => '۳', '4' => '۴', '5' => '۵', '6' => '۶', '7' => '۷', '8' => '۸', '9' => '۹']);
     }
 }
 
-if (!function_exists('toman')) {
+if (! function_exists('toman')) {
     function toman(int|float|string|null $amount): string
     {
-        return persian_number((int) ($amount ?? 0)) . ' تومان';
+        return persian_number((int) ($amount ?? 0)).' تومان';
     }
 }
 
-
-if (!function_exists('blog_category_color')) {
+if (! function_exists('blog_category_color')) {
     /**
      * Deterministic color per blog category (by id) so the same category
      * always gets the same accent across the featured post, grid cards,
@@ -155,7 +162,7 @@ if (!function_exists('blog_category_color')) {
     }
 }
 
-if (!function_exists('reading_time')) {
+if (! function_exists('reading_time')) {
     /**
      * Rough reading-time estimate in minutes from HTML body content.
      * 150 wpm assumes Persian text, which reads slower than English.
@@ -168,7 +175,7 @@ if (!function_exists('reading_time')) {
     }
 }
 
-if (!function_exists('product_image_url')) {
+if (! function_exists('product_image_url')) {
     /**
      * Product-specific image URL resolver: figures out WHICH path to use
      * (explicit $path, else main_image, else the first gallery image), then
@@ -179,9 +186,9 @@ if (!function_exists('product_image_url')) {
     {
         $imagePath = $path;
 
-        if (!$imagePath && $product) {
+        if (! $imagePath && $product) {
             $imagePath = $product->main_image ?? null;
-            if (!$imagePath && !empty($product->gallery_images) && is_array($product->gallery_images)) {
+            if (! $imagePath && ! empty($product->gallery_images) && is_array($product->gallery_images)) {
                 $imagePath = $product->gallery_images[0] ?? null;
             }
         }

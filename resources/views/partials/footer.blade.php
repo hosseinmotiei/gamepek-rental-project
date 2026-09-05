@@ -71,6 +71,10 @@
                 <ul class="space-y-3 text-xs md:text-sm text-gray-600">
                     <li><a href="{{ route('contact') }}" class="hover:text-brandBlue transition-colors">تماس با ما</a></li>
                     <li><a href="{{ route('terms') }}" class="hover:text-brandBlue transition-colors">قوانین و مقررات</a></li>
+                    <li><a href="{{ route('about') }}" class="hover:text-brandBlue transition-colors">درباره ما</a></li>
+                    {{-- Moved out of the top header: order tracking belongs
+                         with the customer's own account, not in site chrome. --}}
+                    <li><a href="{{ route('orders.index') }}" class="hover:text-brandBlue transition-colors">پیگیری سفارش</a></li>
                 </ul>
             </div>
 

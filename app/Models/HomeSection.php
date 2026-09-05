@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 
 class HomeSection extends Model
 {
@@ -15,10 +16,10 @@ class HomeSection extends Model
     protected function casts(): array
     {
         return [
-            'is_active'  => 'boolean',
+            'is_active' => 'boolean',
             'item_limit' => 'integer',
             'sort_order' => 'integer',
-            'config'     => 'array',
+            'config' => 'array',
         ];
     }
 
@@ -39,7 +40,7 @@ class HomeSection extends Model
      * of hardcoded in a controller. "manual" mode has no product-picker UI
      * built yet, so it falls back to "latest" within the category.
      */
-    public function resolveProducts(): \Illuminate\Support\Collection
+    public function resolveProducts(): Collection
     {
         $query = Product::active()->with('category');
 
@@ -49,8 +50,8 @@ class HomeSection extends Model
 
         match ($this->selection_mode) {
             'best_seller' => $query->orderBy('sales_count', 'desc'),
-            'featured'    => $query->where('is_featured', true)->latest(),
-            default       => $query->latest(),
+            'featured' => $query->where('is_featured', true)->latest(),
+            default => $query->latest(),
         };
 
         return $query->limit($this->item_limit ?: 8)->get();

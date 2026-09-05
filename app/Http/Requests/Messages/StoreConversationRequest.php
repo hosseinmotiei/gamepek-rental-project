@@ -15,7 +15,7 @@ class StoreConversationRequest extends FormRequest
     {
         return [
             'subject' => ['required', 'string', 'min:3', 'max:150'],
-            'body'    => ['required', 'string', 'min:3', 'max:5000'],
+            'body' => ['required', 'string', 'min:3', 'max:5000'],
         ];
     }
 
@@ -23,10 +23,10 @@ class StoreConversationRequest extends FormRequest
     {
         return [
             'subject.required' => 'وارد کردن موضوع پیام الزامی است.',
-            'subject.min'      => 'موضوع پیام باید حداقل ۳ کاراکتر باشد.',
-            'body.required'    => 'متن پیام نمی‌تواند خالی باشد.',
-            'body.min'         => 'متن پیام باید حداقل ۳ کاراکتر باشد.',
-            'body.max'         => 'متن پیام نمی‌تواند بیشتر از ۵۰۰۰ کاراکتر باشد.',
+            'subject.min' => 'موضوع پیام باید حداقل ۳ کاراکتر باشد.',
+            'body.required' => 'متن پیام نمی‌تواند خالی باشد.',
+            'body.min' => 'متن پیام باید حداقل ۳ کاراکتر باشد.',
+            'body.max' => 'متن پیام نمی‌تواند بیشتر از ۵۰۰۰ کاراکتر باشد.',
         ];
     }
 }

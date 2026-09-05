@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentVerificationState;
 use Illuminate\Database\Eloquent\Model;
 
 class PaymentTransaction extends Model
@@ -10,6 +11,8 @@ class PaymentTransaction extends Model
         'order_id', 'user_id', 'gateway', 'amount', 'status',
         'authority', 'tracking_code', 'raw_request', 'raw_response', 'paid_at',
         'reversed_at', 'reverse_raw_request', 'reverse_raw_response',
+        'verification_state', 'verified_at', 'gateway_status_code',
+        'gateway_reference', 'reconciled_at', 'correlation_id',
     ];
 
     protected $hidden = [
@@ -25,6 +28,9 @@ class PaymentTransaction extends Model
             'reverse_raw_response' => 'array',
             'paid_at' => 'datetime',
             'reversed_at' => 'datetime',
+            'verified_at' => 'datetime',
+            'reconciled_at' => 'datetime',
+            'verification_state' => PaymentVerificationState::class,
             'amount' => 'integer',
         ];
     }

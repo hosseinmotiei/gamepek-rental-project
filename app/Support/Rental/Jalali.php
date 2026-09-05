@@ -203,6 +203,19 @@ class Jalali
         return self::fromGregorian($g['y'], $g['m'], $g['d']);
     }
 
+    /**
+     * Human-readable Jalali date, e.g. "۱۴۰۵/۰۶/۱۴" rendered as "14 شهریور 1405".
+     *
+     * Added for the rental contract and the verification screens, which have to
+     * show dates to customers; the conversion itself was already here.
+     */
+    public static function format(string $iso): string
+    {
+        $j = self::isoToJalali($iso);
+
+        return sprintf('%d %s %d', $j['jd'], self::MONTHS[$j['jm'] - 1], $j['jy']);
+    }
+
     public static function jalaliToIso(int $jy, int $jm, int $jd): string
     {
         $g = self::toGregorian($jy, $jm, $jd);
@@ -291,7 +304,7 @@ class Jalali
         $j = self::isoToJalali($iso);
 
         return self::toPersianDigits($j['jd'])
-            . ' ' . self::MONTHS[$j['jm'] - 1]
-            . ' ' . self::toPersianDigits($j['jy']);
+            .' '.self::MONTHS[$j['jm'] - 1]
+            .' '.self::toPersianDigits($j['jy']);
     }
 }

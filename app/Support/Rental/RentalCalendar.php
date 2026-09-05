@@ -49,7 +49,7 @@ class RentalCalendar
         }
 
         return [
-            'monthLabel' => Jalali::MONTHS[$jm - 1] . ' ' . Jalali::toPersianDigits($jy),
+            'monthLabel' => Jalali::MONTHS[$jm - 1].' '.Jalali::toPersianDigits($jy),
             'lead' => array_fill(0, Jalali::weekdaySat0($firstIso), 0),
             'days' => $days,
         ];
@@ -71,7 +71,7 @@ class RentalCalendar
         }
 
         return $range + [
-            'label' => Jalali::formatLong($range['start']) . ' تا ' . Jalali::formatLong($range['end']),
+            'label' => Jalali::formatLong($range['start']).' تا '.Jalali::formatLong($range['end']),
         ];
     }
 }

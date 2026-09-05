@@ -7,16 +7,14 @@ use Illuminate\Support\Facades\Auth;
 
 class AuthService
 {
-    public function __construct(private OtpService $otpService)
-    {
-    }
+    public function __construct(private OtpService $otpService) {}
 
     public function findOrCreateUser(string $mobile): array
     {
         $user = User::where('mobile', $mobile)->first();
         $isNewUser = false;
 
-        if (!$user) {
+        if (! $user) {
             $user = User::create([
                 'mobile' => $mobile,
                 'status' => 'active',
@@ -46,6 +44,7 @@ class AuthService
         }
 
         $user->update($data);
+
         return $user->fresh();
     }
 

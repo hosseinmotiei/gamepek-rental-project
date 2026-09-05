@@ -12,6 +12,10 @@ class ProfileController extends Controller
     public function index(): View
     {
         $user = auth()->user();
+        // KYC facts live on the user_identities satellite, never on `users`
+        // (that schema stays compatible with the Store). shouldBeStrict() makes
+        // a lazy load here a real exception, so eager-load it.
+        $user->loadMissing('identity');
         $allOrders = $user->orders()
             ->with(['items.product', 'shippingAddress'])
             ->latest()
@@ -19,9 +23,9 @@ class ProfileController extends Controller
             ->get();
         $addresses = $user->addresses()->orderByDesc('is_default')->get();
         $orderCounts = [
-            'active'    => $user->orders()->whereIn('status', ['pending_payment', 'paid', 'processing', 'shipped'])->count(),
+            'active' => $user->orders()->whereIn('status', ['pending_payment', 'paid', 'processing', 'shipped'])->count(),
             'delivered' => $user->orders()->where('status', 'delivered')->count(),
-            'returned'  => $user->orders()->where('status', 'refunded')->count(),
+            'returned' => $user->orders()->where('status', 'refunded')->count(),
             'cancelled' => $user->orders()->where('status', 'cancelled')->count(),
         ];
         $conversations = $user->conversations()->latest('last_message_at')->limit(10)->get();

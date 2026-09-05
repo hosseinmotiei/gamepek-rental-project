@@ -27,8 +27,7 @@ class RentalQuote
         public readonly int $rentalTotal,
         public readonly int $deposit,
         public readonly int $payableNow,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, int|float>

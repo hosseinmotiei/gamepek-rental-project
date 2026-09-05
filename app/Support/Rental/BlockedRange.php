@@ -20,11 +20,12 @@ use InvalidArgumentException;
 class BlockedRange
 {
     public const KIND_RESERVED = Availability::KIND_RESERVED;
+
     public const KIND_PENDING = Availability::KIND_PENDING;
 
     /**
      * @param  string  $from  inclusive ISO `Y-m-d` start
-     * @param  string  $to    inclusive ISO `Y-m-d` end
+     * @param  string  $to  inclusive ISO `Y-m-d` end
      */
     public function __construct(
         public readonly string $from,
@@ -35,7 +36,7 @@ class BlockedRange
             throw new InvalidArgumentException("Blocked range start ({$from}) is after its end ({$to}).");
         }
 
-        if (!in_array($kind, [self::KIND_RESERVED, self::KIND_PENDING], true)) {
+        if (! in_array($kind, [self::KIND_RESERVED, self::KIND_PENDING], true)) {
             throw new InvalidArgumentException("Unknown blocked range kind: {$kind}.");
         }
     }

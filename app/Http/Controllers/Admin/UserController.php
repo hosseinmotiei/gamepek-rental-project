@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\UserActivityLog;
 use App\Services\ActivityLogService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -13,7 +14,7 @@ class UserController extends Controller
 {
     public function index(Request $request)
     {
-        abort_if(!auth()->user()->can('view_users'), 403);
+        abort_if(! auth()->user()->can('view_users'), 403);
 
         $query = User::withCount('orders')->latest();
 
@@ -21,8 +22,8 @@ class UserController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('full_name', 'like', "%{$search}%")
-                  ->orWhere('mobile', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('mobile', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
@@ -37,7 +38,7 @@ class UserController extends Controller
 
     public function show(User $user)
     {
-        abort_if(!auth()->user()->can('view_users'), 403);
+        abort_if(! auth()->user()->can('view_users'), 403);
 
         $user->load(['addresses', 'roles']);
         $user->loadCount(['orders', 'wishlists', 'reviews', 'questions']);
@@ -59,7 +60,7 @@ class UserController extends Controller
 
         $activityLogs = collect();
         if (auth()->user()->can('view_users')) {
-            $activityLogs = \App\Models\UserActivityLog::where('user_id', $user->id)
+            $activityLogs = UserActivityLog::where('user_id', $user->id)
                 ->latest()
                 ->limit(30)
                 ->get();
@@ -84,7 +85,7 @@ class UserController extends Controller
         $allowedRoles = config('rental.admin.roles');
 
         $data = $request->validate([
-            'role' => 'nullable|string|in:' . implode(',', $allowedRoles),
+            'role' => 'nullable|string|in:'.implode(',', $allowedRoles),
         ]);
 
         $before = $user->roles->pluck('name')->implode(', ') ?: 'بدون دسترسی ادمین';
@@ -97,7 +98,7 @@ class UserController extends Controller
 
         ActivityLogService::log('user.update_role', $user, "تغییر نقش کاربر «{$user->full_name}»", [
             'before' => $before,
-            'after'  => $data['role'] ?? 'بدون دسترسی ادمین',
+            'after' => $data['role'] ?? 'بدون دسترسی ادمین',
         ]);
 
         return back()->with('success', 'نقش کاربر بروزرسانی شد.');
@@ -115,19 +116,19 @@ class UserController extends Controller
         abort_unless(auth()->user()->hasRole('super_admin'), 403);
 
         $data = $request->validate([
-            'email'    => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ], [
-            'email.required'    => 'ایمیل الزامی است.',
-            'email.email'       => 'فرمت ایمیل صحیح نیست.',
-            'email.unique'      => 'این ایمیل قبلاً برای کاربر دیگری ثبت شده.',
+            'email.required' => 'ایمیل الزامی است.',
+            'email.email' => 'فرمت ایمیل صحیح نیست.',
+            'email.unique' => 'این ایمیل قبلاً برای کاربر دیگری ثبت شده.',
             'password.required' => 'رمز عبور الزامی است.',
-            'password.min'      => 'رمز عبور باید حداقل ۸ کاراکتر باشد.',
-            'password.confirmed'=> 'تکرار رمز عبور مطابقت ندارد.',
+            'password.min' => 'رمز عبور باید حداقل ۸ کاراکتر باشد.',
+            'password.confirmed' => 'تکرار رمز عبور مطابقت ندارد.',
         ]);
 
         $user->update([
-            'email'    => $data['email'],
+            'email' => $data['email'],
             'password' => $data['password'],
         ]);
 
@@ -138,7 +139,7 @@ class UserController extends Controller
 
     public function toggleBlock(User $user)
     {
-        abort_if(!auth()->user()->can('block_users'), 403);
+        abort_if(! auth()->user()->can('block_users'), 403);
 
         if ($user->id === auth()->id()) {
             return back()->with('error', 'نمی‌توانید حساب خودتان را مسدود کنید.');

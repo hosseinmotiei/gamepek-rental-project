@@ -18,7 +18,7 @@ class CategoryController extends Controller
 
     public function index(Request $request)
     {
-        abort_if(!auth()->user()->can('view_categories'), 403);
+        abort_if(! auth()->user()->can('view_categories'), 403);
 
         $query = Category::with(['parent', 'children'])
             ->withCount('products')
@@ -29,8 +29,8 @@ class CategoryController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('name_fa', 'like', "%{$search}%")
-                  ->orWhere('name_en', 'like', "%{$search}%")
-                  ->orWhere('slug', 'like', "%{$search}%");
+                    ->orWhere('name_en', 'like', "%{$search}%")
+                    ->orWhere('slug', 'like', "%{$search}%");
             });
         }
 
@@ -41,9 +41,10 @@ class CategoryController extends Controller
 
     public function create()
     {
-        abort_if(!auth()->user()->can('create_categories'), 403);
+        abort_if(! auth()->user()->can('create_categories'), 403);
 
         $parents = Category::whereNull('parent_id')->orderBy('sort_order')->get();
+
         return view('admin.categories.create', compact('parents'));
     }
 
@@ -64,12 +65,12 @@ class CategoryController extends Controller
         ActivityLogService::log('category.create', $category, "ایجاد دسته‌بندی «{$category->name_fa}»");
 
         return redirect()->route('admin.categories.index')
-            ->with('success', 'دسته‌بندی «' . $category->name_fa . '» با موفقیت ایجاد شد.');
+            ->with('success', 'دسته‌بندی «'.$category->name_fa.'» با موفقیت ایجاد شد.');
     }
 
     public function edit(Category $category)
     {
-        abort_if(!auth()->user()->can('edit_categories'), 403);
+        abort_if(! auth()->user()->can('edit_categories'), 403);
 
         $parents = Category::whereNull('parent_id')
             ->where('id', '!=', $category->id)
@@ -89,7 +90,9 @@ class CategoryController extends Controller
             } catch (ImageUploadFailedException $e) {
                 return back()->withInput()->withErrors(['image' => $e->getMessage()]);
             }
-            if ($category->image) Storage::disk('public')->delete($category->image);
+            if ($category->image) {
+                Storage::disk('public')->delete($category->image);
+            }
             $data['image'] = $newPath;
         } elseif ($request->boolean('remove_image') && $category->image) {
             Storage::disk('public')->delete($category->image);
@@ -103,12 +106,12 @@ class CategoryController extends Controller
         ]);
 
         return redirect()->route('admin.categories.index')
-            ->with('success', 'دسته‌بندی «' . $category->name_fa . '» به‌روزرسانی شد.');
+            ->with('success', 'دسته‌بندی «'.$category->name_fa.'» به‌روزرسانی شد.');
     }
 
     public function destroy(Category $category)
     {
-        abort_if(!auth()->user()->can('delete_categories'), 403);
+        abort_if(! auth()->user()->can('delete_categories'), 403);
 
         if ($category->products()->withTrashed()->count() > 0) {
             return back()->with('error', 'این دسته‌بندی دارای محصول است و حذف نمی‌شود. ابتدا محصولات را جابجا کنید.');
@@ -120,25 +123,27 @@ class CategoryController extends Controller
 
         ActivityLogService::log('category.delete', $category, "حذف دسته‌بندی «{$category->name_fa}»");
 
-        if ($category->image) Storage::disk('public')->delete($category->image);
+        if ($category->image) {
+            Storage::disk('public')->delete($category->image);
+        }
 
         $category->delete();
 
         return redirect()->route('admin.categories.index')
-            ->with('success', 'دسته‌بندی «' . $category->name_fa . '» حذف شد.');
+            ->with('success', 'دسته‌بندی «'.$category->name_fa.'» حذف شد.');
     }
 
     public function toggle(Category $category)
     {
-        abort_if(!auth()->user()->can('edit_categories'), 403);
+        abort_if(! auth()->user()->can('edit_categories'), 403);
 
-        $category->update(['is_active' => !$category->is_active]);
+        $category->update(['is_active' => ! $category->is_active]);
         $label = $category->is_active ? 'فعال' : 'غیرفعال';
 
         ActivityLogService::log('category.toggle_status', $category, "{$label}‌سازی دسته‌بندی «{$category->name_fa}»", [
             'is_active' => $category->is_active,
         ]);
 
-        return back()->with('success', 'دسته‌بندی «' . $category->name_fa . '» ' . $label . ' شد.');
+        return back()->with('success', 'دسته‌بندی «'.$category->name_fa.'» '.$label.' شد.');
     }
 }

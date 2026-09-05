@@ -172,8 +172,7 @@ class ReportController extends Controller
             ->when($dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $dateFrom))
             ->when($dateTo, fn ($q) => $q->whereDate('created_at', '<=', $dateTo))
             ->when($status, fn ($q) => $q->where('status', $status))
-            ->when($payStatus, fn ($q) => $q->where('payment_status', $payStatus))
-;
+            ->when($payStatus, fn ($q) => $q->where('payment_status', $payStatus));
 
         $byStatus = Order::select('status', DB::raw('count(*) as count'))->groupBy('status')->orderByDesc('count')->get();
         $byPayment = Order::select('payment_status', DB::raw('count(*) as count'))->groupBy('payment_status')->orderByDesc('count')->get();

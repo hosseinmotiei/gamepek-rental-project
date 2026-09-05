@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Checkout;
 
-use App\Services\CartService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -25,10 +24,10 @@ class PlaceOrderRequest extends FormRequest
             'shipping_address_id' => $needsShipping
                 ? ['required', 'integer', Rule::exists('addresses', 'id')->where('user_id', auth()->id())]
                 : ['nullable', 'integer'],
-            'shipping_method_id'  => $needsShipping
+            'shipping_method_id' => $needsShipping
                 ? ['required', 'integer', 'exists:shipping_methods,id']
                 : ['nullable', 'integer'],
-            'customer_note'       => ['nullable', 'string', 'max:500'],
+            'customer_note' => ['nullable', 'string', 'max:500'],
         ];
     }
 
@@ -36,8 +35,8 @@ class PlaceOrderRequest extends FormRequest
     {
         return [
             'shipping_address_id.required' => 'انتخاب آدرس ارسال الزامی است.',
-            'shipping_address_id.exists'   => 'آدرس انتخابی معتبر نیست.',
-            'shipping_method_id.required'  => 'انتخاب روش ارسال الزامی است.',
+            'shipping_address_id.exists' => 'آدرس انتخابی معتبر نیست.',
+            'shipping_method_id.required' => 'انتخاب روش ارسال الزامی است.',
         ];
     }
 

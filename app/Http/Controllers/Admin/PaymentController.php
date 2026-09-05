@@ -5,19 +5,18 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\PaymentTransaction;
 use App\Services\ActivityLogService;
+use App\Services\Audit\AuditLogger;
 use App\Services\OrderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class PaymentController extends Controller
 {
-    public function __construct(private OrderService $orderService)
-    {
-    }
+    public function __construct(private OrderService $orderService) {}
 
     public function index(Request $request)
     {
-        abort_if(!auth()->user()->can('view_payments'), 403);
+        abort_if(! auth()->user()->can('view_payments'), 403);
 
         $query = PaymentTransaction::with(['order', 'user'])->latest();
 
@@ -33,10 +32,10 @@ class PaymentController extends Controller
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('tracking_code', 'like', "%{$search}%")
-                  ->orWhere('authority', 'like', "%{$search}%")
-                  ->orWhereHas('order', fn ($o) => $o->where('order_number', 'like', "%{$search}%"))
-                  ->orWhereHas('user', fn ($u) => $u->where('full_name', 'like', "%{$search}%")
-                      ->orWhere('mobile', 'like', "%{$search}%"));
+                    ->orWhere('authority', 'like', "%{$search}%")
+                    ->orWhereHas('order', fn ($o) => $o->where('order_number', 'like', "%{$search}%"))
+                    ->orWhereHas('user', fn ($u) => $u->where('full_name', 'like', "%{$search}%")
+                        ->orWhere('mobile', 'like', "%{$search}%"));
             });
         }
 
@@ -47,7 +46,7 @@ class PaymentController extends Controller
 
     public function show(PaymentTransaction $transaction)
     {
-        abort_if(!auth()->user()->can('view_payments'), 403);
+        abort_if(! auth()->user()->can('view_payments'), 403);
 
         $transaction->load(['order.items', 'user']);
 
@@ -63,7 +62,7 @@ class PaymentController extends Controller
      */
     public function approve(Request $request, PaymentTransaction $transaction)
     {
-        abort_if(!auth()->user()->can('mark_payment_status'), 403);
+        abort_if(! auth()->user()->can('mark_payment_status'), 403);
 
         $request->validate([
             'reason' => ['nullable', 'string', 'max:500'],
@@ -72,19 +71,19 @@ class PaymentController extends Controller
         $locked = DB::transaction(function () use ($transaction) {
             $row = PaymentTransaction::where('id', $transaction->id)->lockForUpdate()->first();
 
-            if (!$row || $row->status !== 'pending') {
+            if (! $row || $row->status !== 'pending') {
                 return null; // Not eligible -- already resolved by another action/callback.
             }
 
             $row->update([
-                'status'  => 'success',
+                'status' => 'success',
                 'paid_at' => now(),
             ]);
 
             return $row;
         });
 
-        if (!$locked) {
+        if (! $locked) {
             return back()->with('error', 'این تراکنش دیگر در وضعیت «در انتظار» نیست و قابل تأیید نیست.');
         }
 
@@ -97,6 +96,21 @@ class PaymentController extends Controller
             'order_id' => $order?->id, 'reason' => $request->input('reason'), 'before' => 'pending', 'after' => 'success',
         ]);
 
+        // Written alongside the activity-log entry, not instead of it: the
+        // admin feed keeps its shape, and the audit trail gains actor,
+        // resource, result and correlation id. A manual approval deliberately
+        // bypasses gateway verification, so it must be traceable to a person.
+        AuditLogger::log(
+            action: 'payment.manual_approve',
+            resourceType: 'PaymentTransaction',
+            resourceId: $locked->id,
+            context: [
+                'order_id' => $order?->id,
+                'reason' => $request->input('reason'),
+                'bypassed_gateway_verification' => true,
+            ],
+        );
+
         return redirect()->route('admin.payments.show', $transaction)
             ->with('success', 'پرداخت با موفقیت تأیید شد.');
     }
@@ -108,7 +122,7 @@ class PaymentController extends Controller
      */
     public function reject(Request $request, PaymentTransaction $transaction)
     {
-        abort_if(!auth()->user()->can('mark_payment_status'), 403);
+        abort_if(! auth()->user()->can('mark_payment_status'), 403);
 
         $request->validate([
             'reason' => ['required', 'string', 'max:500'],
@@ -119,7 +133,7 @@ class PaymentController extends Controller
         $locked = DB::transaction(function () use ($transaction) {
             $row = PaymentTransaction::where('id', $transaction->id)->lockForUpdate()->first();
 
-            if (!$row || $row->status !== 'pending') {
+            if (! $row || $row->status !== 'pending') {
                 return null; // Not eligible -- already resolved by another action/callback.
             }
 
@@ -128,7 +142,7 @@ class PaymentController extends Controller
             return $row;
         });
 
-        if (!$locked) {
+        if (! $locked) {
             return back()->with('error', 'این تراکنش دیگر در وضعیت «در انتظار» نیست و قابل رد کردن نیست.');
         }
 

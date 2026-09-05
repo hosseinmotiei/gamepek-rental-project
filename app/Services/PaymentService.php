@@ -2,261 +2,261 @@
 
 namespace App\Services;
 
+use App\Enums\PaymentVerificationState;
 use App\Models\Order;
 use App\Models\PaymentTransaction;
+use App\Services\Audit\AuditLogger;
+use App\Services\Payment\Contracts\PaymentGatewayInterface;
+use App\Services\Payment\GatewayRegistry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
+/**
+ * PAY-01..PAY-05 orchestration.
+ *
+ * The four-armed match() that used to dispatch to private per-gateway methods
+ * is gone; the gateways are now adapters behind PaymentGatewayInterface and
+ * this class owns exactly one copy of the lifecycle: create the transaction,
+ * lock it, verify server-side, mark the order paid, audit. Adding a gateway
+ * no longer means adding two private methods here.
+ *
+ * The three public methods keep their exact signatures and return-array shapes
+ * because CheckoutController reads $result['success'|'message'|'order'|
+ * 'tracking_code'] and Admin\PaymentController relies on the same flow.
+ *
+ * The behavioural change that matters: an order is marked paid ONLY on the
+ * strength of $gateway->verify(), a server-to-server call. Callback query
+ * parameters are used to find the transaction and for nothing else. The mock
+ * gateway previously read `Status=OK` straight out of the callback URL, which
+ * let any visitor mark any pending order paid by editing that URL.
+ */
 class PaymentService
 {
     public function __construct(
         private OrderService $orderService,
-        private PardakhtNovinGateway $pardakhtNovinGateway,
+        private GatewayRegistry $gateways,
     ) {}
 
     /**
-     * Initiate payment — returns redirect URL or payment data.
+     * PAY-01. Signature unchanged.
      */
     public function initiatePayment(Order $order): array
     {
-        $gateway = config('rental.payment.gateway', 'mock');
+        $gateway = $this->gateways->for(config('rental.payment.gateway', 'mock'));
 
-        // Mock gateway is only permitted in local/testing environments. This
-        // guards against ANY unrecognized/misconfigured gateway value falling
-        // through to the match's default (mock) arm below in production --
-        // not just the literal string 'mock' -- so a PAYMENT_GATEWAY typo can
-        // never silently run mock in production.
-        if (! in_array($gateway, ['zarinpal', 'idpay', 'pardakhtnovin'], true) && ! app()->environment(['local', 'testing'])) {
-            return [
-                'success' => false,
-                'message' => 'درگاه پرداخت پیکربندی نشده است. لطفاً با پشتیبانی تماس بگیرید.',
-            ];
-        }
-
-        return match ($gateway) {
-            'zarinpal' => $this->initiateZarinpal($order),
-            'idpay' => $this->initiateIdpay($order),
-            'pardakhtnovin' => $this->initiatePardakhtNovin($order),
-            default => $this->initiateMock($order),
-        };
-    }
-
-    /**
-     * Handle payment callback from gateway.
-     */
-    public function handleCallback(array $params, string $gateway = 'mock'): array
-    {
-        return match ($gateway) {
-            'zarinpal' => $this->handleZarinpalCallback($params),
-            'idpay' => $this->handleIdpayCallback($params),
-            'pardakhtnovin' => $this->handlePardakhtNovinCallback($params),
-            default => $this->handleMockCallback($params),
-        };
-    }
-
-    // ──────────────────────────────────────────────────
-    // Mock Gateway (Development)
-    // ──────────────────────────────────────────────────
-
-    private function initiateMock(Order $order): array
-    {
-        $authority = 'MOCK_'.Str::upper(Str::random(20));
-
-        PaymentTransaction::create([
-            'order_id' => $order->id,
-            'user_id' => $order->user_id,
-            'gateway' => 'mock',
-            'amount' => $order->total,
-            'status' => 'pending',
-            'authority' => $authority,
-            'raw_request' => ['order_id' => $order->id, 'amount' => $order->total],
-        ]);
-
-        $callbackUrl = config('rental.payment.callback_url')
-            .'?Authority='.$authority
-            .'&Status=OK'
-            .'&gateway=mock';
-
-        return [
-            'success' => true,
-            'gateway' => 'mock',
-            'authority' => $authority,
-            'redirect_url' => $callbackUrl,  // In dev: auto-redirect to success
-        ];
-    }
-
-    private function handleMockCallback(array $params): array
-    {
-        $authority = $params['Authority'] ?? null;
-        $status = $params['Status'] ?? 'NOK';
-
-        $transaction = PaymentTransaction::where('authority', $authority)
-            ->where('gateway', 'mock')
-            ->with(['order.items.digitalCode', 'order.items.product', 'order.user.cart.items'])
-            ->first();
-
-        if (! $transaction || $status !== 'OK') {
-            if ($transaction) {
-                $transaction->update(['status' => 'failed', 'raw_response' => $params]);
-                $this->orderService->markAsFailed($transaction->order);
-            }
-
-            return ['success' => false, 'message' => 'پرداخت ناموفق بود.'];
-        }
-
-        $trackingCode = 'MOCK_REF_'.strtoupper(Str::random(10));
-
-        $transaction->update([
-            'status' => 'success',
-            'tracking_code' => $trackingCode,
-            'paid_at' => now(),
-            'raw_response' => $params,
-        ]);
-
-        $this->orderService->markAsPaid($transaction->order, $trackingCode);
-
-        return [
-            'success' => true,
-            'tracking_code' => $trackingCode,
-            'order' => $transaction->order->fresh(),
-        ];
-    }
-
-    // ──────────────────────────────────────────────────
-    // Pardakht Novin IPG (Sprint 3 Task 2 -- Phase 1: NormalSale only)
-    // ──────────────────────────────────────────────────
-
-    /**
-     * NormalSale only. Confirm/Reverse and real callback verification are
-     * explicitly out of scope for this phase -- see PardakhtNovinGateway's
-     * class docblock. This method is pure orchestration: PaymentService owns
-     * the PaymentTransaction lifecycle and OrderService integration point;
-     * PardakhtNovinGateway owns nothing but the gateway's own wire protocol.
-     *
-     * OrderId sent to the gateway is this PaymentTransaction's own id, not
-     * Order.id or Order.order_number -- the doc requires OrderId to be a
-     * unique `long` per attempt (page 5), and order_number is a non-numeric
-     * string. A fresh PaymentTransaction row already exists per attempt in
-     * this codebase's existing design (mirrors initiateMock() exactly), so
-     * its auto-increment id is already guaranteed unique per attempt without
-     * any schema change.
-     */
-    private function initiatePardakhtNovin(Order $order): array
-    {
         $transaction = PaymentTransaction::create([
             'order_id' => $order->id,
             'user_id' => $order->user_id,
-            'gateway' => 'pardakhtnovin',
+            'gateway' => $gateway->key(),
             'amount' => $order->total,
             'status' => 'pending',
+            'verification_state' => PaymentVerificationState::Unverified->value,
+            'correlation_id' => AuditLogger::correlationId(),
         ]);
 
-        $callbackUrl = config('rental.payment.pardakhtnovin.callback_url')
-            ?: route('payment.callback');
+        $callbackUrl = $this->callbackUrlFor($gateway->key());
 
-        // CRITICAL: every amount in this codebase ($order->total, prices,
-        // everything shown to the customer) is in Toman, but Pardakht
-        // Novin -- a Shaparak-connected switch (pna.shaparak.ir) -- expects
-        // its `Amount` field in Rial (1 Toman = 10 Rial), like virtually
-        // every Shaparak-certified gateway. Sending the raw Toman value
-        // undercharges the customer by exactly 10x at the gateway while
-        // the storefront still shows the correct (10x larger) Toman price.
-        $amountInRial = $order->total * 10;
-
-        $result = $this->pardakhtNovinGateway->requestToken(
-            orderId: $transaction->id,
-            amount: $amountInRial,
-            callbackUrl: $callbackUrl,
-        );
+        $result = $gateway->request($transaction, $callbackUrl);
 
         $transaction->update([
-            'raw_request' => ['OrderId' => $transaction->id, 'Amount' => $amountInRial, 'CallBackUrl' => $callbackUrl],
-            'raw_response' => $result['raw'],
+            'raw_request' => [
+                'order_id' => $transaction->id,
+                'amount' => $transaction->amount,
+                'callback_url' => $callbackUrl,
+            ],
+            'raw_response' => $result->raw,
         ]);
 
-        if (! $result['success']) {
+        if (! $result->success) {
             $transaction->update(['status' => 'failed']);
 
-            return [
-                'success' => false,
-                'message' => $result['message'] ?? 'درگاه پرداخت پرداخت نوین در دسترس نیست. لطفاً با پشتیبانی تماس بگیرید.',
-            ];
+            AuditLogger::log(
+                action: 'payment.request',
+                resourceType: 'PaymentTransaction',
+                resourceId: $transaction->id,
+                result: AuditLogger::RESULT_FAILURE,
+                context: ['gateway' => $gateway->key(), 'order_id' => $order->id],
+            );
+
+            return ['success' => false, 'message' => $result->message ?? 'درگاه پرداخت در دسترس نیست.'];
         }
 
-        $transaction->update(['authority' => $result['token']]);
+        $transaction->update(['authority' => $result->authority]);
+
+        AuditLogger::log(
+            action: 'payment.request',
+            resourceType: 'PaymentTransaction',
+            resourceId: $transaction->id,
+            context: ['gateway' => $gateway->key(), 'order_id' => $order->id, 'amount' => $transaction->amount],
+        );
 
         return [
             'success' => true,
-            'gateway' => 'pardakhtnovin',
-            'authority' => $result['token'],
-            'redirect_url' => $this->pardakhtNovinGateway->redirectUrl($result['token']),
+            'gateway' => $gateway->key(),
+            'authority' => $result->authority,
+            'redirect_url' => $result->redirectUrl,
         ];
     }
 
     /**
-     * Sprint 3 Task 3: Callback + Confirm.
+     * PAY-02 + PAY-03. Signature unchanged.
      *
-     * The documentation does not enumerate the exact parameters Pardakht
-     * Novin sends to CallBackUrl (no field table exists for the callback
-     * itself, unlike NormalSale/Confirm/Reverse which each have one) -- only
-     * that "نتیجه تراکنش به آدرس پذیرنده در فیلد Callbackurl ... ارسال میگردد"
-     * (the transaction result is sent to the merchant's CallBackUrl). `Token`
-     * is read here because it is the one field name used identically across
-     * every other documented operation (NormalSale response, Confirm
-     * request/response, Reverse request/response) -- an extension of a
-     * clearly-consistent convention, not an invented one.
-     *
-     * Idempotency (mirrors OrderService::markAsPaid()'s own lock-then-check
-     * shape exactly): the PaymentTransaction row is locked and its status
-     * re-checked before Confirm is ever called. Confirm is only attempted
-     * from `pending` -- an already-`success` transaction returns its stored
-     * result without calling Confirm or OrderService again; anything else
-     * (`failed`, or any other non-pending state) is rejected as a stale/
-     * duplicate callback. This is the primary guard; the gateway's own
-     * -1533 "PaymentIsAlreadyConfirmed" response code is a secondary
-     * backstop this code does not need to rely on under normal operation.
+     * Idempotency is the same lock-then-check shape as OrderService::markAsPaid()
+     * and the previous handlePardakhtNovinCallback(): the authoritative row is
+     * re-fetched under lockForUpdate inside the transaction, and only a still-
+     * `pending` row is allowed to proceed to verification.
      */
-    private function handlePardakhtNovinCallback(array $params): array
+    public function handleCallback(array $params, string $gateway = 'mock'): array
     {
-        Log::info('PardakhtNovin callback received', ['params' => $params]);
+        $adapter = $this->gateways->for($gateway);
+        $callback = $adapter->parseCallback($params);
 
-        $token = array_find_ci($params, 'Token');
+        Log::info('Payment callback received', ['gateway' => $adapter->key(), 'params' => $params]);
 
-        if (empty($token)) {
-            Log::warning('PardakhtNovin callback malformed: missing Token', ['params' => $params]);
+        if (empty($callback->authority)) {
+            Log::warning('Payment callback malformed: no authority', ['gateway' => $adapter->key()]);
 
-            return [
-                'success' => false,
-                'message' => 'اطلاعات بازگشتی از درگاه پرداخت نامعتبر است.',
-            ];
+            return ['success' => false, 'message' => 'اطلاعات بازگشتی از درگاه پرداخت نامعتبر است.'];
         }
 
-        $transaction = PaymentTransaction::where('gateway', 'pardakhtnovin')
-            ->where('authority', $token)
-            ->with(['order.items.digitalCode', 'order.items.product', 'order.user.cart.items'])
+        $transaction = PaymentTransaction::where('gateway', $adapter->key())
+            ->where('authority', $callback->authority)
             ->first();
 
         if (! $transaction) {
-            Log::warning('PardakhtNovin callback: unknown token', ['token' => $token]);
+            Log::warning('Payment callback: unknown authority', ['gateway' => $adapter->key()]);
 
-            return [
-                'success' => false,
-                'message' => 'تراکنش مورد نظر یافت نشد.',
-            ];
+            return ['success' => false, 'message' => 'تراکنش مورد نظر یافت نشد.'];
         }
 
-        return DB::transaction(function () use ($transaction, $token) {
-            // BUG-pattern parity with markAsPaid(): re-fetch and lock the
-            // authoritative row inside this transaction rather than trusting
-            // the possibly-stale $transaction already loaded above.
+        return $this->settle($transaction, $adapter, $params);
+    }
+
+    /**
+     * PAY-03 exposed on its own, for the admin "verify" action and for
+     * reconciliation. Safe to call repeatedly.
+     */
+    public function verifyTransaction(PaymentTransaction $transaction): array
+    {
+        return $this->settle($transaction, $this->gateways->for($transaction->gateway), []);
+    }
+
+    /**
+     * PAY-04. Read-only inquiry -- never mutates the transaction, never marks
+     * an order paid. May legitimately answer Unknown.
+     */
+    public function statusOf(PaymentTransaction $transaction): array
+    {
+        $verification = $this->gateways->for($transaction->gateway)->status($transaction);
+
+        return [
+            'success' => $verification->state !== PaymentVerificationState::Mismatch,
+            'state' => $verification->state->value,
+            'paid' => $verification->paid,
+            'status_code' => $verification->statusCode,
+            'message' => $verification->message,
+        ];
+    }
+
+    /**
+     * PAY-05.
+     *
+     * `reversed_at` (not `status`) is the authoritative "already refunded"
+     * guard: a FAILED refund attempt leaves status at 'success' and
+     * reversed_at null, so a legitimate retry after a transient failure stays
+     * possible; only a row that already carries reversed_at is a duplicate.
+     */
+    public function refundPayment(PaymentTransaction $transaction, ?int $amountRial = null): array
+    {
+        $adapter = $this->gateways->for($transaction->gateway);
+
+        try {
+            return DB::transaction(function () use ($transaction, $adapter, $amountRial) {
+                $locked = PaymentTransaction::where('id', $transaction->id)->lockForUpdate()->first();
+
+                if ($locked->reversed_at !== null) {
+                    return ['success' => false, 'message' => 'این تراکنش قبلاً بازگشت داده شده است.'];
+                }
+
+                if ($locked->status !== 'success') {
+                    return ['success' => false, 'message' => 'این تراکنش قابل بازگشت نیست.'];
+                }
+
+                $result = $adapter->refund($locked, $amountRial);
+
+                $locked->update([
+                    // The merchant secret is never persisted in these columns.
+                    'reverse_raw_request' => ['authority' => $locked->authority, 'amount_rial' => $amountRial],
+                    'reverse_raw_response' => $result->raw,
+                ]);
+
+                if (! $result->success) {
+                    AuditLogger::log(
+                        action: 'payment.refund',
+                        resourceType: 'PaymentTransaction',
+                        resourceId: $locked->id,
+                        result: AuditLogger::RESULT_FAILURE,
+                        context: ['gateway' => $adapter->key()],
+                    );
+
+                    return [
+                        'success' => false,
+                        'message' => $result->message ?? 'بازگشت وجه ناموفق بود. لطفاً بعداً دوباره تلاش کنید.',
+                    ];
+                }
+
+                $locked->update(['status' => 'refunded', 'reversed_at' => now()]);
+
+                // Order/inventory reconciliation runs inside this SAME
+                // transaction: if it throws, the refund marking rolls back with
+                // it and our own state is never left half-updated.
+                $this->orderService->refundOrder($locked->order()->first());
+
+                AuditLogger::log(
+                    action: 'payment.refund',
+                    resourceType: 'PaymentTransaction',
+                    resourceId: $locked->id,
+                    context: ['gateway' => $adapter->key(), 'reference' => $result->reference],
+                );
+
+                return ['success' => true, 'message' => 'بازگشت وجه با موفقیت انجام شد.'];
+            });
+        } catch (\Throwable $e) {
+            Log::error('Payment refund reconciliation failed, transaction rolled back', [
+                'transaction_id' => $transaction->id,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return ['success' => false, 'message' => 'خطا در پردازش بازگشت وجه. لطفاً با پشتیبانی تماس بگیرید.'];
+        }
+    }
+
+    /**
+     * Kept for the existing admin call site. Signature unchanged.
+     */
+    public function reversePayment(string $token): array
+    {
+        $transaction = PaymentTransaction::where('authority', $token)->first();
+
+        if (! $transaction) {
+            return ['success' => false, 'message' => 'تراکنش مورد نظر یافت نشد.'];
+        }
+
+        return $this->refundPayment($transaction);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // The one settlement path. Every caller -- public callback, admin verify,
+    // reconciliation -- goes through here. Nothing else may mark an order paid.
+    // ──────────────────────────────────────────────────────────────────────
+
+    private function settle(PaymentTransaction $transaction, PaymentGatewayInterface $adapter, array $params): array
+    {
+        return DB::transaction(function () use ($transaction, $adapter, $params) {
             $locked = PaymentTransaction::where('id', $transaction->id)->lockForUpdate()->first();
 
             if ($locked->status === 'success') {
-                Log::info('PardakhtNovin duplicate callback detected (already confirmed)', [
-                    'transaction_id' => $locked->id,
-                    'token' => $token,
-                ]);
+                Log::info('Duplicate payment callback (already settled)', ['transaction_id' => $locked->id]);
 
                 return [
                     'success' => true,
@@ -266,235 +266,99 @@ class PaymentService
             }
 
             if ($locked->status !== 'pending') {
-                Log::info('PardakhtNovin duplicate/stale callback detected', [
-                    'transaction_id' => $locked->id,
-                    'token' => $token,
-                    'status' => $locked->status,
-                ]);
+                Log::info('Stale payment callback', ['transaction_id' => $locked->id, 'status' => $locked->status]);
 
-                return [
-                    'success' => false,
-                    'message' => 'این تراکنش قبلاً پردازش شده است.',
-                ];
+                return ['success' => false, 'message' => 'این تراکنش قبلاً پردازش شده است.'];
             }
 
-            Log::info('PardakhtNovin confirm request', ['transaction_id' => $locked->id, 'token' => $token]);
+            $verification = $adapter->verify($locked);
 
-            $confirmResult = $this->pardakhtNovinGateway->confirm($token);
+            $locked->update([
+                'raw_response' => $params ? array_merge($params, $verification->raw) : $verification->raw,
+                'gateway_status_code' => $verification->statusCode,
+                'verification_state' => $verification->state->value,
+                'verified_at' => now(),
+            ]);
 
-            $locked->update(['raw_response' => $confirmResult['raw']]);
+            // The gateway could not tell us. Leave the row pending so
+            // reconciliation can try again -- never guess in either direction.
+            if ($verification->state === PaymentVerificationState::Unknown) {
+                $this->audit($locked, $adapter, AuditLogger::RESULT_FAILURE, 'unknown');
 
-            if (! $confirmResult['success']) {
+                return ['success' => false, 'message' => 'وضعیت پرداخت هنوز مشخص نیست. لطفاً چند دقیقه دیگر بررسی کنید.'];
+            }
+
+            if (! $verification->isVerifiedPaid()) {
                 $locked->update(['status' => 'failed']);
-
-                Log::warning('PardakhtNovin confirm failed', [
-                    'transaction_id' => $locked->id,
-                    'status' => $confirmResult['status'],
-                ]);
-
-                $this->orderService->markAsFailed($locked->order);
+                $this->orderService->markAsFailed($locked->order()->first());
+                $this->audit($locked, $adapter, AuditLogger::RESULT_FAILURE, 'not_paid');
 
                 return [
                     'success' => false,
-                    'message' => 'پرداخت تایید نشد. در صورت کسر وجه، مبلغ ظرف چند دقیقه بازگردانده خواهد شد.',
+                    'message' => $verification->message ?? 'پرداخت ناموفق بود.',
                 ];
             }
 
-            $trackingCode = $confirmResult['rrn'];
+            // Amount cross-check. Skipped only when the gateway's documented
+            // response carries no amount at all (see PardakhtNovinAdapter),
+            // never because the value was inconvenient.
+            if ($verification->amountRial !== null && $verification->amountRial !== $locked->amount * 10) {
+                $locked->update([
+                    'status' => 'failed',
+                    'verification_state' => PaymentVerificationState::Mismatch->value,
+                ]);
+                $this->orderService->markAsFailed($locked->order()->first());
+
+                Log::error('Payment amount mismatch', [
+                    'transaction_id' => $locked->id,
+                    'expected_rial' => $locked->amount * 10,
+                    'gateway_rial' => $verification->amountRial,
+                ]);
+
+                $this->audit($locked, $adapter, AuditLogger::RESULT_FAILURE, 'amount_mismatch');
+
+                return ['success' => false, 'message' => 'مبلغ پرداخت با مبلغ سفارش مطابقت ندارد. لطفاً با پشتیبانی تماس بگیرید.'];
+            }
 
             $locked->update([
                 'status' => 'success',
-                'tracking_code' => $trackingCode,
+                'tracking_code' => $verification->reference,
+                'gateway_reference' => $verification->reference,
                 'paid_at' => now(),
             ]);
 
-            $this->orderService->markAsPaid($locked->order, $trackingCode);
+            $this->orderService->markAsPaid($locked->order()->first(), $verification->reference);
 
-            Log::info('PardakhtNovin payment confirmed successfully', [
-                'transaction_id' => $locked->id,
-                'rrn' => $trackingCode,
-            ]);
+            $this->audit($locked, $adapter, AuditLogger::RESULT_SUCCESS, 'paid');
 
             return [
                 'success' => true,
-                'tracking_code' => $trackingCode,
+                'tracking_code' => $verification->reference,
                 'order' => $locked->order()->first()?->fresh(),
             ];
         });
     }
 
-    /**
-     * Sprint 3 Task 4: Reverse (بازگشت خرید).
-     *
-     * public because this is intended to be called from an admin action
-     * (not yet built -- out of scope for this task, which only covers the
-     * orchestration method itself), unlike the private initiate-/handle-
-     * prefixed gateway-dispatch methods above.
-     *
-     * Eligibility (per the doc's own narrative, page 3-4): Reverse only makes
-     * sense after a successful Confirm ("تراکنش را تأیید" ... "میتواند ...
-     * متد (بازگشت وجه) را فراخوانی نمایید") -- i.e. status must be 'success'.
-     * The doc also states this should happen "کمتر از 15 دقیقه" (less than
-     * 15 minutes) after confirmation; that window is enforced by the gateway
-     * itself (response code -1552 "PaymentRequestIsNotEligibleToReversal"),
-     * not duplicated here, since no explicit client-side deadline value is
-     * documented.
-     *
-     * Idempotency: identical lock-then-check shape to handlePardakhtNovinCallback()/
-     * markAsPaid(). `reversed_at` (not `status`) is the authoritative
-     * "already reversed" guard -- a *failed* reverse attempt leaves `status`
-     * at 'success' (the original payment was never undone) and `reversed_at`
-     * null, so a legitimate retry after a transient failure remains possible;
-     * only a row that already has `reversed_at` set is treated as a duplicate.
-     */
-    public function reversePayment(string $token): array
+    private function audit(PaymentTransaction $transaction, PaymentGatewayInterface $adapter, string $result, string $outcome): void
     {
-        Log::info('PardakhtNovin reverse requested', ['token' => $token]);
-
-        $transaction = PaymentTransaction::where('gateway', 'pardakhtnovin')
-            ->where('authority', $token)
-            ->with(['order.items.product', 'order.items.digitalCode'])
-            ->first();
-
-        if (! $transaction) {
-            Log::warning('PardakhtNovin reverse: unknown transaction', ['token' => $token]);
-
-            return [
-                'success' => false,
-                'message' => 'تراکنش مورد نظر یافت نشد.',
-            ];
-        }
-
-        // Sprint 3 Task 4.5: the entire gateway-reverse-marking AND the
-        // internal order/inventory/digital-code reconciliation below run
-        // inside this ONE transaction. If reconciliation throws for any
-        // reason, the whole transaction (including the PaymentTransaction's
-        // own status='refunded'/reversed_at update) rolls back -- the
-        // database is never left partially updated. The gateway-side reverse
-        // itself cannot be undone at that point (see Known Limitations), but
-        // our own state stays internally consistent either way.
-        try {
-            return DB::transaction(function () use ($transaction, $token) {
-                $locked = PaymentTransaction::where('id', $transaction->id)->lockForUpdate()->first();
-
-                if ($locked->reversed_at !== null) {
-                    Log::info('PardakhtNovin duplicate reverse detected', [
-                        'transaction_id' => $locked->id,
-                        'token' => $token,
-                        'reversed_at' => $locked->reversed_at,
-                    ]);
-
-                    return [
-                        'success' => false,
-                        'message' => 'این تراکنش قبلاً بازگشت داده شده است.',
-                    ];
-                }
-
-                if ($locked->status !== 'success') {
-                    Log::warning('PardakhtNovin reverse rejected: transaction not eligible', [
-                        'transaction_id' => $locked->id,
-                        'token' => $token,
-                        'status' => $locked->status,
-                    ]);
-
-                    return [
-                        'success' => false,
-                        'message' => 'این تراکنش قابل بازگشت نیست.',
-                    ];
-                }
-
-                Log::info('PardakhtNovin reverse request', ['transaction_id' => $locked->id, 'token' => $token]);
-
-                $reverseResult = $this->pardakhtNovinGateway->reverse($token);
-
-                $locked->update([
-                    // CorporationPin intentionally omitted, consistent with
-                    // initiatePardakhtNovin()'s own raw_request (Sprint 3 Task 2)
-                    // -- the merchant secret is never persisted in this column.
-                    'reverse_raw_request' => ['Token' => $token],
-                    'reverse_raw_response' => $reverseResult['raw'],
-                ]);
-
-                if (! $reverseResult['success']) {
-                    Log::warning('PardakhtNovin reverse failed', [
-                        'transaction_id' => $locked->id,
-                        'status' => $reverseResult['status'],
-                    ]);
-
-                    return [
-                        'success' => false,
-                        'message' => $reverseResult['message'] ?? 'بازگشت وجه ناموفق بود. لطفاً بعداً دوباره تلاش کنید.',
-                    ];
-                }
-
-                $locked->update([
-                    'status' => 'refunded',
-                    'reversed_at' => now(),
-                ]);
-
-                Log::info('PardakhtNovin reverse succeeded, reconciling order state', ['transaction_id' => $locked->id]);
-
-                // Sprint 3 Task 4.5: reconcile Order/inventory/digital-code
-                // state now that the gateway reverse has succeeded. Runs
-                // inside this same transaction -- see the comment above.
-                $this->orderService->refundOrder($transaction->order);
-
-                Log::info('PardakhtNovin reverse and reconciliation both succeeded', ['transaction_id' => $locked->id]);
-
-                return [
-                    'success' => true,
-                    'message' => 'بازگشت وجه با موفقیت انجام شد.',
-                ];
-            });
-        } catch (\Throwable $e) {
-            Log::error('PardakhtNovin reverse reconciliation failed, transaction rolled back', [
-                'transaction_id' => $transaction->id,
-                'token' => $token,
-                'exception' => $e->getMessage(),
-            ]);
-
-            return [
-                'success' => false,
-                'message' => 'خطا در پردازش بازگشت وجه. لطفاً با پشتیبانی تماس بگیرید.',
-            ];
-        }
+        AuditLogger::log(
+            action: 'payment.verified',
+            resourceType: 'PaymentTransaction',
+            resourceId: $transaction->id,
+            result: $result,
+            context: [
+                'gateway' => $adapter->key(),
+                'outcome' => $outcome,
+                'order_id' => $transaction->order_id,
+                'status_code' => $transaction->gateway_status_code,
+            ],
+        );
     }
 
-    // ──────────────────────────────────────────────────
-    // Zarinpal (Production - stub)
-    // ──────────────────────────────────────────────────
-
-    private function initiateZarinpal(Order $order): array
+    private function callbackUrlFor(string $gatewayKey): string
     {
-        // TODO: Integrate Zarinpal SDK before production
-        // $merchant = config('rental.payment.zarinpal_merchant');
-        // $callbackUrl = config('rental.payment.callback_url');
-        return [
-            'success' => false,
-            'message' => 'درگاه پرداخت زرین‌پال هنوز پیکربندی نشده است. لطفاً با پشتیبانی تماس بگیرید.',
-        ];
-    }
-
-    private function handleZarinpalCallback(array $params): array
-    {
-        return ['success' => false, 'message' => 'درگاه پرداخت زرین‌پال پیکربندی نشده است.'];
-    }
-
-    // ──────────────────────────────────────────────────
-    // IDPay (Production - stub)
-    // ──────────────────────────────────────────────────
-
-    private function initiateIdpay(Order $order): array
-    {
-        // TODO: Integrate IDPay SDK before production
-        return [
-            'success' => false,
-            'message' => 'درگاه پرداخت آیدی‌پی هنوز پیکربندی نشده است. لطفاً با پشتیبانی تماس بگیرید.',
-        ];
-    }
-
-    private function handleIdpayCallback(array $params): array
-    {
-        return ['success' => false, 'message' => 'درگاه پرداخت آیدی‌پی پیکربندی نشده است.'];
+        return config('rental.payment.'.$gatewayKey.'.callback_url')
+            ?: config('rental.payment.callback_url')
+            ?: route('payment.callback');
     }
 }

@@ -15,7 +15,7 @@ class MessageController extends Controller
 {
     public function index(Request $request): View
     {
-        abort_if(!auth()->user()->can('view_messages'), 403);
+        abort_if(! auth()->user()->can('view_messages'), 403);
 
         $query = Conversation::with('user')->latest('last_message_at');
 
@@ -38,7 +38,7 @@ class MessageController extends Controller
 
     public function show(Conversation $conversation): View
     {
-        abort_if(!auth()->user()->can('view_messages'), 403);
+        abort_if(! auth()->user()->can('view_messages'), 403);
 
         $conversation->load(['user', 'messages.sender']);
         $conversation->update(['admin_read_at' => now()]);
@@ -48,9 +48,9 @@ class MessageController extends Controller
 
     public function reply(StoreMessageRequest $request, Conversation $conversation): RedirectResponse
     {
-        abort_if(!auth()->user()->can('reply_messages'), 403);
+        abort_if(! auth()->user()->can('reply_messages'), 403);
 
-        if (!$conversation->isOpen()) {
+        if (! $conversation->isOpen()) {
             return back()->with('error', 'این گفتگو بسته شده است. برای پاسخ دادن ابتدا آن را بازگشایی کنید.');
         }
 
@@ -74,7 +74,7 @@ class MessageController extends Controller
 
     public function close(Conversation $conversation): RedirectResponse
     {
-        abort_if(!auth()->user()->can('close_conversations'), 403);
+        abort_if(! auth()->user()->can('close_conversations'), 403);
 
         $conversation->update(['status' => 'closed', 'closed_at' => now()]);
 
@@ -85,7 +85,7 @@ class MessageController extends Controller
 
     public function reopen(Conversation $conversation): RedirectResponse
     {
-        abort_if(!auth()->user()->can('close_conversations'), 403);
+        abort_if(! auth()->user()->can('close_conversations'), 403);
 
         $conversation->update(['status' => 'open', 'closed_at' => null]);
 

@@ -33,9 +33,10 @@ class Address extends Model
             $this->city,
             $this->district,
             $this->address_line,
-            $this->plaque ? 'پلاک ' . $this->plaque : null,
-            $this->unit ? 'واحد ' . $this->unit : null,
+            $this->plaque ? 'پلاک '.$this->plaque : null,
+            $this->unit ? 'واحد '.$this->unit : null,
         ]);
+
         return implode('، ', $parts);
     }
 }

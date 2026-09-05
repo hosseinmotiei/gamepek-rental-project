@@ -30,14 +30,14 @@ class InventoryService
         }
 
         $lockedProducts = [];
-        if (!empty($requiredQtyByProductId)) {
+        if (! empty($requiredQtyByProductId)) {
             $productIds = array_keys($requiredQtyByProductId);
             sort($productIds);
 
             foreach ($productIds as $productId) {
                 $product = Product::where('id', $productId)->lockForUpdate()->first();
 
-                if (!$product || $product->stock_quantity < $requiredQtyByProductId[$productId]) {
+                if (! $product || $product->stock_quantity < $requiredQtyByProductId[$productId]) {
                     throw new \Exception('موجودی این محصول کافی نیست.', 422);
                 }
 
@@ -95,7 +95,7 @@ class InventoryService
         foreach ($productIds as $productId) {
             $product = Product::where('id', $productId)->lockForUpdate()->first();
 
-            if (!$product) {
+            if (! $product) {
                 continue;
             }
 

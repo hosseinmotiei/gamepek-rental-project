@@ -760,7 +760,7 @@
                     <div class="flex items-center justify-between py-4 border-b border-gray-100">
                         <div class="flex flex-col gap-1">
                             <span class="text-[10px] md:text-xs text-gray-400">کد ملی</span>
-                            <span class="text-sm md:text-base font-bold text-gray-800">{{ $user->national_code ?? '-' }}</span>
+                            <span class="text-sm md:text-base font-bold text-gray-800">{{ $user->identity?->national_code_mask ?? '-' }}</span>
                         </div>
                         <button class="text-brandBlue p-2"><i class="fa-solid fa-plus"></i></button>
                     </div>
@@ -781,7 +781,7 @@
                     <div class="flex items-center justify-between py-4 border-b border-gray-100">
                         <div class="flex flex-col gap-1">
                             <span class="text-[10px] md:text-xs text-gray-400">تاریخ تولد</span>
-                            <span class="text-sm md:text-base font-bold text-gray-800">{{ $user->birth_date ?? '-' }}</span>
+                            <span class="text-sm md:text-base font-bold text-gray-800">{{ $user->identity?->birth_date?->format('Y-m-d') ?? '-' }}</span>
                         </div>
                         <button class="text-brandBlue p-2"><i class="fa-solid fa-plus"></i></button>
                     </div>
@@ -1102,30 +1102,55 @@ function setDefaultAddress(id) {
         return digitsOnly(v).slice(0, 24).replace(/(\d{4})(?=\d)/g, '$1 ');
     }
 
-    // Frontend prototype: no bank inquiry API exists yet. Resolves a deterministic
-    // placeholder holder name so the UI is complete; swap the body for a real
-    // card/IBAN inquiry call when the wallet backend ships.
-    const HOLDER_STUB_NAMES = ['محمد رضایی', 'زهرا احمدی', 'علی موسوی', 'فاطمه کریمی', 'حسین نجفی', 'مریم صادقی'];
-    function lookupHolderName(digits) {
-        let sum = 0;
-        for (let i = 0; i < digits.length; i++) sum += digits.charCodeAt(i);
-        return HOLDER_STUB_NAMES[sum % HOLDER_STUB_NAMES.length];
+    // Real ownership inquiry: POST the card/IBAN to the rental bank-account
+    // endpoints and show whatever the provider returned. The old body hashed
+    // the digits into one of six hardcoded Persian names -- fabricated data.
+    let holderRequest = 0;
+    async function resolveHolderName(type, value) {
+        const token = document.querySelector('meta[name="csrf-token"]').content;
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': token,
+        };
+        const stored = await fetch(@js(route('verification.bank.store')), {
+            method: 'POST', headers, body: JSON.stringify({ type, value }),
+        }).then(r => r.json());
+        if (!stored.success) throw new Error(stored.message || 'ثبت حساب بانکی ناموفق بود.');
+
+        const verified = await fetch(@js(url('/verification/bank-accounts')) + '/' + stored.id + '/verify', {
+            method: 'POST', headers,
+        }).then(r => r.json());
+        if (!verified.success) throw new Error(verified.message || 'استعلام مالکیت ناموفق بود.');
+
+        return verified.owner_name || verified.message || 'نام صاحب حساب اعلام نشد.';
     }
 
     function renderHolderName() {
         const row = document.getElementById('wallet-holder-row');
         if (!row) return;
+        const nameEl = document.getElementById('wallet-holder-name');
         const card = digitsOnly(document.getElementById('wallet-card-number').value);
         const sheba = digitsOnly(document.getElementById('wallet-sheba-number').value);
-        const source = sheba.length === 24 ? 'IR' + sheba : (card.length === 16 ? card : '');
-        if (!source) {
+
+        let type = null, value = null;
+        if (sheba.length === 24) { type = 'iban'; value = 'IR' + sheba; }
+        else if (card.length === 16) { type = 'card'; value = card; }
+
+        if (!value) {
             row.classList.add('hidden');
             row.classList.remove('flex');
             return;
         }
-        document.getElementById('wallet-holder-name').textContent = lookupHolderName(source);
+
+        const ticket = ++holderRequest;
+        nameEl.textContent = 'در حال استعلام…';
         row.classList.remove('hidden');
         row.classList.add('flex');
+
+        resolveHolderName(type, value)
+            .then(name => { if (ticket === holderRequest) nameEl.textContent = name; })
+            .catch(e => { if (ticket === holderRequest) nameEl.textContent = e.message; });
     }
 
     window.onWalletCardInput = function (el) {

@@ -33,6 +33,7 @@ class Cart extends Model
     {
         return $this->items->sum(function ($item) {
             $price = $item->product?->effective_price ?? 0;
+
             return (int) $price * $item->quantity;
         });
     }

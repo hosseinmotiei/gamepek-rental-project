@@ -67,9 +67,8 @@
     <i class="fa-solid fa-calendar-check"></i> ادامه رزرو
 </button>
 <p class="mt-2 text-[10px] text-gray-400 text-center">ودیعه هنگام تحویل دریافت و پس از بازگشت دستگاه عودت می‌شود.</p>
-<p class="rental-reserve-note hidden mt-3 rounded-xl bg-amber-50 border border-amber-200 p-3 text-[11px] leading-6 text-amber-800">
-    ثبت رزرو آنلاین هنوز فعال نشده است. برای رزرو این دستگاه با پشتیبانی تماس بگیرید.
-</p>
+{{-- Online reservation is live: the CTA opens an application and reserves
+     into it (see rental-panel.blade.php). --}}
 @else
 <button disabled class="w-full bg-gray-200 text-gray-400 font-bold py-3.5 rounded-xl cursor-not-allowed text-sm">
     فعلاً قابل اجاره نیست

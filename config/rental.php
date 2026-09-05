@@ -1,5 +1,7 @@
 <?php
 
+use App\Services\Payment\Gateways\PardakhtNovinAdapter;
+
 return [
     'otp' => [
         'expiry_minutes' => env('AUTH_OTP_EXPIRY_MINUTES', 2),
@@ -12,6 +14,26 @@ return [
     'payment' => [
         'gateway' => env('PAYMENT_GATEWAY', 'mock'),
         'callback_url' => env('PAYMENT_CALLBACK_URL'),
+
+        // Gateway key => adapter class, resolved by
+        // App\Services\Payment\GatewayRegistry. A key that is absent here, or
+        // whose class does not implement PaymentGatewayInterface, resolves to
+        // UnconfiguredGateway -- which fails closed with a Persian message.
+        // `mock` is deliberately NOT listed: the registry hands it out only in
+        // local/testing, so a PAYMENT_GATEWAY typo can never run mock in
+        // production. Zarinpal and IDPay are likewise absent -- they were
+        // never implemented, only stubbed, and now answer through
+        // UnconfiguredGateway with the same Persian message as before.
+        'gateways' => [
+            'pardakhtnovin' => PardakhtNovinAdapter::class,
+        ],
+
+        // PAY-06 reconciliation: a transaction still `pending` this long after
+        // creation is inspected by `php artisan payments:reconcile`.
+        'reconcile' => [
+            'stale_after_minutes' => env('PAYMENT_RECONCILE_STALE_MINUTES', 30),
+            'lookback_hours' => env('PAYMENT_RECONCILE_LOOKBACK_HOURS', 72),
+        ],
 
         // Pardakht Novin IPG (NormalSale/Confirm/Reverse), carried over from
         // the Store. Per the official docs (I.P.IT.012.00), only
@@ -56,6 +78,36 @@ return [
         ],
     ],
 
+    'reservation' => [
+        // TODO(business) B10: how long a held reservation survives before it
+        // expires. null means holds never auto-expire and the expiry sweep
+        // no-ops -- a customer's reservation is never dropped on a guessed
+        // timeout.
+        'hold_minutes' => env('RENTAL_HOLD_MINUTES'),
+    ],
+
+    'contract' => [
+        // Which contract_templates key ContractService::generate() renders.
+        'template_key' => env('RENTAL_CONTRACT_TEMPLATE_KEY', 'rental_agreement'),
+    ],
+
+    'sms' => [
+        'max_attempts' => env('RENTAL_SMS_MAX_ATTEMPTS', 3),
+
+        // SMS-05. Template key => body, with {{placeholder}} substitution.
+        //
+        // DELIBERATELY EMPTY. No customer-facing SMS copy has been approved by
+        // the owner, and writing Persian transactional copy on their behalf is
+        // not this code's call (TODO(business) B13). SmsService sends nothing
+        // for an unknown key and records `sms.template_undefined` in the audit
+        // trail, so the gap is visible rather than silent.
+        'templates' => [],
+
+        // Chain transition => template key. Also empty, for the same reason:
+        // no SMS fires on any state change until the copy exists.
+        'state_templates' => [],
+    ],
+
     'pagination' => [
         'products_per_page' => 20,
         'orders_per_page' => 10,
@@ -66,6 +118,18 @@ return [
         // panel. Used by both EnsureIsAdmin (route middleware) and
         // AdminLoginController (login gate) so the two can never drift.
         'roles' => ['super_admin', 'admin', 'product_manager', 'order_manager', 'content_manager', 'support'],
+    ],
+
+    'search' => [
+        // Cities the home-page rental search offers. Not invented data: the
+        // app already restricts delivery to Tehran (see StoreAddressRequest's
+        // `city.in:تهران` rule), so this list mirrors that single real
+        // constraint. Add a city here only when delivery to it actually
+        // exists -- and update StoreAddressRequest in the same change.
+        'cities' => ['تهران'],
+
+        // Longest rental window the search form accepts, in days.
+        'max_days' => 90,
     ],
 
     'catalog' => [
