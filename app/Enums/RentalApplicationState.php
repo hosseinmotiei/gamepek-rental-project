@@ -91,6 +91,15 @@ enum RentalApplicationState: string
             return $this->order() < self::Approved->order();
         }
 
+        // Past final approval the ladder is walked one rung at a time. The
+        // triggers for Active, Returned and Closed are undefined
+        // (TODO(business) B14), so nothing may skip a rung into or across
+        // them -- Approved -> Returned, Approved -> Closed and
+        // Active -> Closed are all refused.
+        if ($this->order() >= self::Approved->order() || $target->order() > self::Approved->order()) {
+            return $target->order() === $this->order() + 1;
+        }
+
         // Everything else moves strictly forward along the ladder.
         return $target->order() > $this->order();
     }

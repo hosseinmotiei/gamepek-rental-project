@@ -179,10 +179,10 @@ class HomeSearchFlowTest extends TestCase
     {
         $user = User::create(['full_name' => 'مستأجر', 'mobile' => '0912'.random_int(1000000, 9999999), 'status' => 'active']);
 
+        // `state` is not mass assignable; the column's default is draft.
         $application = RentalApplication::create([
             'application_number' => RentalApplication::generateNumber(),
             'user_id' => $user->id,
-            'state' => 'draft',
         ]);
 
         RentalReservation::create([

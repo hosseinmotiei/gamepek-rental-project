@@ -8,14 +8,11 @@ use App\Enums\GuaranteeState;
 use App\Enums\IdentityState;
 use App\Enums\RentalApplicationState;
 use App\Models\AuditEvent;
-use App\Models\Category;
 use App\Models\Contract;
 use App\Models\ContractSignature;
 use App\Models\ContractTemplate;
 use App\Models\Guarantee;
 use App\Models\GuaranteeInquiry;
-use App\Models\Product;
-use App\Models\RentalApplication;
 use App\Models\RentalApplicationTransition;
 use App\Models\User;
 use App\Models\VerificationMedia;
@@ -32,6 +29,7 @@ use Database\Seeders\ContractTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\BuildsRentalChain;
 use Tests\TestCase;
 
 /**
@@ -47,10 +45,7 @@ use Tests\TestCase;
  */
 class RentalChainEndToEndTest extends TestCase
 {
-    use RefreshDatabase;
-
-    /** A national code that passes the real check-digit algorithm. */
-    private const NATIONAL_CODE = '0499370899';
+    use BuildsRentalChain, RefreshDatabase;
 
     private User $user;
 
@@ -294,8 +289,7 @@ class RentalChainEndToEndTest extends TestCase
     {
         config()->set('verification.guarantee.required_inquiries', []);
 
-        $application = app(RentalReservationService::class)->openApplication($this->user);
-        app(IdentityVerificationService::class)->submit($this->user, self::NATIONAL_CODE);
+        $application = $this->paidApplication($this->user);
 
         $guarantees = app(GuaranteeService::class);
         $guarantee = $guarantees->submit($application, ['sayad_id' => '1234567890123456']);
@@ -325,10 +319,9 @@ class RentalChainEndToEndTest extends TestCase
 
     public function test_a_tampered_contract_fails_signature_verification(): void
     {
-        $application = $this->applicationWithContract();
-        $contract = app(ContractService::class)->generate($application);
+        $application = $this->contractAcceptedApplication($this->user);
+        $contract = $application->contract;
 
-        app(ContractService::class)->accept($contract, $this->user, '127.0.0.1', 'phpunit');
         $signature = app(ContractService::class)->sign($contract->refresh(), $this->user, [
             'ip' => '127.0.0.1', 'user_agent' => 'phpunit',
         ]);
@@ -345,11 +338,10 @@ class RentalChainEndToEndTest extends TestCase
 
     public function test_a_contract_cannot_be_signed_twice(): void
     {
-        $application = $this->applicationWithContract();
+        $application = $this->contractAcceptedApplication($this->user);
         $contracts = app(ContractService::class);
 
-        $contract = $contracts->generate($application);
-        $contracts->accept($contract, $this->user, '127.0.0.1', 'phpunit');
+        $contract = $application->contract;
 
         $first = $contracts->sign($contract->refresh(), $this->user, ['ip' => '127.0.0.1']);
         $second = $contracts->sign($contract->refresh(), $this->user, ['ip' => '127.0.0.1']);
@@ -428,48 +420,5 @@ class RentalChainEndToEndTest extends TestCase
         $this->assertSame(1, app(VerificationMediaService::class)->purgeExpired());
         $this->assertDatabaseHas('verification_media', ['id' => $media->id, 'state' => 'purged']);
         $this->assertNull($media->fresh()->path);
-    }
-
-    // ──────────────────────────────────────────────────────────────────────
-
-    private function applicationWithContract(): RentalApplication
-    {
-        $reservations = app(RentalReservationService::class);
-        $product = $this->makeRentableProduct();
-
-        app(IdentityVerificationService::class)->submit($this->user, self::NATIONAL_CODE, '1995-03-21');
-
-        $application = $reservations->openApplication($this->user);
-        $reservations->reserve($application, $product, now()->addDay()->toDateString(), 3);
-
-        return $application->refresh();
-    }
-
-    private function makeRentableProduct(): Product
-    {
-        $category = Category::create([
-            'name_fa' => 'کنسول اجاره‌ای',
-            'slug' => 'rental-console-'.uniqid(),
-            'is_active' => true,
-        ]);
-
-        return Product::create([
-            'category_id' => $category->id,
-            'title_fa' => 'پلی‌استیشن ۵ اجاره‌ای',
-            'slug' => 'ps5-rental-'.uniqid(),
-            'price' => 500_000,
-            'stock_status' => 'in_stock',
-            'stock_quantity' => 1,
-            'is_active' => true,
-            'attributes' => [
-                '_rental' => [
-                    'daily_rate' => 500_000,
-                    'deposit' => 3_000_000,
-                    'delivery_fee' => 80_000,
-                    'status' => 'available',
-                    'extra_controller_daily' => 50_000,
-                ],
-            ],
-        ]);
     }
 }

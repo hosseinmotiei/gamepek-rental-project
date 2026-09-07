@@ -33,7 +33,7 @@ class AuditLogger
     private const REDACT_KEYS = [
         'national_code', 'nationalcode', 'national_id',
         'pan', 'card_number', 'cardnumber',
-        'iban', 'sheba', 'sayad_id',
+        'iban', 'sheba', 'sayad_id', 'sayad_id_encrypted', 'sayad_id_hash',
         'otp', 'code', 'password', 'secret', 'token', 'api_key',
     ];
 

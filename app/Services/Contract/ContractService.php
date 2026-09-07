@@ -3,6 +3,7 @@
 namespace App\Services\Contract;
 
 use App\Enums\ContractState;
+use App\Enums\RentalApplicationState;
 use App\Models\Contract;
 use App\Models\ContractSignature;
 use App\Models\ContractTemplate;
@@ -27,13 +28,49 @@ class ContractService
         private SignatureProviderInterface $signatureProvider,
     ) {}
 
+    /**
+     * The rungs a contract may be generated from.
+     *
+     * GuaranteeVerified is the entry point; the two contract states are here so
+     * a refresh or a retry after a timeout is idempotent rather than an error.
+     * This is the documented ladder, not an invented rule.
+     */
+    private const GENERATABLE_FROM = [
+        RentalApplicationState::GuaranteeVerified,
+        RentalApplicationState::ContractGenerated,
+        RentalApplicationState::ContractAccepted,
+    ];
+
     /** CON-01 + CON-02. */
     public function generate(RentalApplication $application): Contract
     {
+        if (! in_array($application->state, self::GENERATABLE_FROM, true)) {
+            AuditLogger::log(
+                action: 'contract.generation_denied',
+                resourceType: 'RentalApplication',
+                resourceId: $application->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: ['state' => $application->state->value],
+            );
+
+            throw new \RuntimeException('صدور قرارداد پس از تأیید ضمانت امکان‌پذیر است.');
+        }
+
         $key = config('rental.contract.template_key', 'rental_agreement');
         $template = ContractTemplate::activeFor($key);
 
+        // TODO(business) B12: the official contract text is undecided. Without a
+        // published, active template nothing is rendered -- an undefined policy
+        // never becomes an approval.
         if (! $template) {
+            AuditLogger::log(
+                action: 'contract.template_undefined',
+                resourceType: 'RentalApplication',
+                resourceId: $application->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: ['template_key' => $key],
+            );
+
             throw new \RuntimeException('قالب قرارداد فعالی برای اجاره تعریف نشده است.');
         }
 
@@ -87,12 +124,61 @@ class ContractService
         });
     }
 
+    /**
+     * The rungs a contract may be accepted from.
+     *
+     * ContractGenerated is the entry point; the two later states are here so a
+     * double submit or a refresh is idempotent. Acceptance from GuaranteeVerified
+     * is deliberately excluded: a contract row that exists but has not yet been
+     * derived onto the application is not something the customer has been shown.
+     */
+    private const ACCEPTABLE_FROM = [
+        RentalApplicationState::ContractGenerated,
+        RentalApplicationState::ContractAccepted,
+        RentalApplicationState::AwaitingFinalApproval,
+    ];
+
     /** CON-03. */
     public function accept(Contract $contract, User $user, string $ip, string $userAgent): Contract
     {
+        // loadMissing, not a bare read: Model::shouldBeStrict() turns an
+        // implicit lazy load into an exception outside production.
+        $contract->loadMissing('application');
+        $application = $contract->application;
+
+        if (! $application || ! in_array($application->state, self::ACCEPTABLE_FROM, true)) {
+            AuditLogger::log(
+                action: 'contract.acceptance_denied',
+                resourceType: 'Contract',
+                resourceId: $contract->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: ['state' => $application?->state->value],
+                actor: $user,
+            );
+
+            throw new \RuntimeException('پذیرش قرارداد پس از صدور آن امکان‌پذیر است.');
+        }
+
+        // Checked BEFORE the transaction on purpose: this branch both audits and
+        // throws, and an audit row written inside the transaction would be
+        // rolled back with it, losing the record of a tamper attempt.
+        if (! $contract->fresh()?->isIntact()) {
+            AuditLogger::log(
+                action: 'contract.tamper_detected',
+                resourceType: 'Contract',
+                resourceId: $contract->id,
+                result: AuditLogger::RESULT_DENIED,
+                actor: $user,
+            );
+
+            throw new \RuntimeException('متن قرارداد معتبر نیست. لطفاً با پشتیبانی تماس بگیرید.');
+        }
+
         return DB::transaction(function () use ($contract, $user, $ip, $userAgent) {
             $locked = Contract::where('id', $contract->id)->lockForUpdate()->first();
 
+            // The race loser and the double submit land here: the acceptance
+            // that already happened is returned, and nothing is written twice.
             if ($locked->state === ContractState::Accepted || $locked->state === ContractState::Signed) {
                 return $locked;
             }
@@ -101,20 +187,13 @@ class ContractService
                 throw new \RuntimeException('این قرارداد در وضعیت قابل پذیرش نیست.');
             }
 
-            if (! $locked->isIntact()) {
-                AuditLogger::log(
-                    action: 'contract.tamper_detected',
-                    resourceType: 'Contract',
-                    resourceId: $locked->id,
-                    result: AuditLogger::RESULT_DENIED,
-                );
-
-                throw new \RuntimeException('متن قرارداد معتبر نیست. لطفاً با پشتیبانی تماس بگیرید.');
-            }
-
+            // Accepting never touches the snapshot -- rendered_html, variables,
+            // template_key, template_version and content_hash are exactly what
+            // generate() wrote.
             $locked->update([
                 'state' => ContractState::Accepted,
                 'accepted_at' => now(),
+                'accepted_by_user_id' => $user->id,
                 'accepted_ip' => $ip,
                 'accepted_user_agent' => $userAgent,
             ]);
@@ -123,7 +202,13 @@ class ContractService
                 action: 'contract.accepted',
                 resourceType: 'Contract',
                 resourceId: $locked->id,
-                context: ['number' => $locked->number, 'content_hash' => $locked->content_hash],
+                context: [
+                    'rental_application_id' => $locked->rental_application_id,
+                    'number' => $locked->number,
+                    'template_key' => $locked->template_key,
+                    'template_version' => $locked->template_version,
+                    'content_hash' => $locked->content_hash,
+                ],
                 actor: $user,
             );
 
@@ -131,9 +216,50 @@ class ContractService
         });
     }
 
+    /**
+     * The rungs a contract may be signed from. AwaitingFinalApproval is here so
+     * a retry after a completed signature returns the existing one.
+     */
+    private const SIGNABLE_FROM = [
+        RentalApplicationState::ContractAccepted,
+        RentalApplicationState::AwaitingFinalApproval,
+    ];
+
     /** CON-04. */
     public function sign(Contract $contract, User $signer, array $evidence): ContractSignature
     {
+        $contract->loadMissing('application');
+        $application = $contract->application;
+
+        if (! $application || ! in_array($application->state, self::SIGNABLE_FROM, true)) {
+            AuditLogger::log(
+                action: 'contract.signature_denied',
+                resourceType: 'Contract',
+                resourceId: $contract->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: ['state' => $application?->state->value],
+                actor: $signer,
+            );
+
+            throw new \RuntimeException('امضای قرارداد پس از پذیرش آن امکان‌پذیر است.');
+        }
+
+        // Before the transaction, for the same reason accept() checks here: an
+        // audit row written inside a transaction that then throws is rolled
+        // back with it, and a tamper attempt must leave a trace.
+        if (! $contract->fresh()?->isIntact()) {
+            AuditLogger::log(
+                action: 'contract.tamper_detected',
+                resourceType: 'Contract',
+                resourceId: $contract->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: ['operation' => 'sign'],
+                actor: $signer,
+            );
+
+            throw new \RuntimeException('متن قرارداد معتبر نیست. لطفاً با پشتیبانی تماس بگیرید.');
+        }
+
         return DB::transaction(function () use ($contract, $signer, $evidence) {
             $locked = Contract::where('id', $contract->id)->lockForUpdate()->first();
 
@@ -152,10 +278,8 @@ class ContractService
                 throw new \RuntimeException('پیش از امضا باید قرارداد را بپذیرید.');
             }
 
-            if (! $locked->isIntact()) {
-                throw new \RuntimeException('متن قرارداد معتبر نیست. لطفاً با پشتیبانی تماس بگیرید.');
-            }
-
+            // Signing renders nothing: the signature binds to the snapshot
+            // generate() wrote, and the provider hashes that stored text.
             $signature = $this->signatureProvider->sign($locked, $signer, $evidence);
 
             $locked->update(['state' => ContractState::Signed, 'signed_at' => now()]);
@@ -165,7 +289,11 @@ class ContractService
                 resourceType: 'Contract',
                 resourceId: $locked->id,
                 context: [
+                    'rental_application_id' => $locked->rental_application_id,
                     'number' => $locked->number,
+                    'template_key' => $locked->template_key,
+                    'template_version' => $locked->template_version,
+                    'content_hash' => $locked->content_hash,
                     'signature_id' => $signature->id,
                     'method' => $signature->method,
                     'not_pki' => true,

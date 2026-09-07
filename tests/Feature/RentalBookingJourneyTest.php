@@ -180,10 +180,10 @@ class RentalBookingJourneyTest extends TestCase
             'full_name' => 'کاربر دیگر', 'mobile' => '09121119999', 'status' => 'active',
         ]);
 
+        // `state` is not mass assignable; the column's default is draft.
         $application = RentalApplication::create([
             'application_number' => RentalApplication::generateNumber(),
             'user_id' => $other->id,
-            'state' => 'draft',
         ]);
 
         $this->actingAs($this->customer->fresh())

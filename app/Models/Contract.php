@@ -14,7 +14,7 @@ class Contract extends Model
         'rental_application_id', 'contract_template_id',
         'template_key', 'template_version', 'number',
         'variables', 'rendered_html', 'content_hash', 'state',
-        'generated_at', 'accepted_at', 'accepted_ip', 'accepted_user_agent',
+        'generated_at', 'accepted_at', 'accepted_by_user_id', 'accepted_ip', 'accepted_user_agent',
         'signed_at', 'voided_at', 'storage_disk', 'storage_path',
     ];
 
@@ -34,6 +34,11 @@ class Contract extends Model
     public function application(): BelongsTo
     {
         return $this->belongsTo(RentalApplication::class, 'rental_application_id');
+    }
+
+    public function acceptedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'accepted_by_user_id');
     }
 
     public function template(): BelongsTo

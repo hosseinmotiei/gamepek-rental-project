@@ -2,7 +2,6 @@
 
 namespace App\Services\Rental;
 
-use App\Enums\RentalApplicationState;
 use App\Enums\ReservationState;
 use App\Models\Product;
 use App\Models\RentalApplication;
@@ -154,10 +153,13 @@ class RentalReservationService
         $application = RentalApplication::create([
             'application_number' => RentalApplication::generateNumber(),
             'user_id' => $user->id,
-            'state' => RentalApplicationState::Draft,
             'correlation_id' => AuditLogger::correlationId(),
             'submitted_at' => now(),
         ]);
+
+        // `state` is not fillable, so the row's default lands in the database
+        // rather than on this instance.
+        $application->refresh();
 
         AuditLogger::log(
             action: 'rental_application.opened',

@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\RentalApplication;
 use App\Services\Contract\ContractService;
+use App\Services\Contract\SignatureOtpService;
 use App\Services\Guarantee\GuaranteeService;
 use App\Services\OtpService;
 use App\Services\PaymentService;
@@ -34,6 +35,7 @@ class RentalApplicationController extends Controller
         private GuaranteeService $guarantees,
         private ContractService $contracts,
         private OtpService $otp,
+        private SignatureOtpService $signatureOtp,
     ) {}
 
     public function store(Request $request)
@@ -193,7 +195,7 @@ class RentalApplicationController extends Controller
             $guarantee = $this->guarantees->submit($application, $data);
             $guarantee->setRelation('application', $application);
             $this->guarantees->runInquiries($guarantee);
-        } catch (\InvalidArgumentException $e) {
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
             return $this->fail($request, $e->getMessage(), 422);
         } catch (ProviderException $e) {
             return $this->fail($request, $e->persianMessage, 503);
@@ -266,15 +268,36 @@ class RentalApplicationController extends Controller
     {
         $this->authorize('update', $application);
 
+        $application->loadMissing('contract');
+        $contract = $application->contract;
+
+        if (! $contract) {
+            return $this->fail($request, 'قراردادی برای امضا وجود ندارد.', 422);
+        }
+
+        $contract->setRelation('application', $application);
+
         try {
-            $this->otp->generateAndSend((string) $request->user()->mobile);
+            $code = $this->signatureOtp->request($contract, $request->user(), (string) $request->ip());
+        } catch (\RuntimeException $e) {
+            return $this->fail($request, $e->getMessage(), 422);
         } catch (\Throwable $e) {
             Log::error('Contract signature OTP failed', ['exception' => $e->getMessage()]);
 
             return $this->fail($request, 'ارسال کد تأیید ممکن نشد. لطفاً دوباره تلاش کنید.', 503);
         }
 
-        return $this->ok($request, 'کد تأیید امضا ارسال شد.');
+        $payload = [];
+
+        // The project's existing local-only mechanism, unchanged: the code is
+        // surfaced solely under the conditions OtpService already defines, and
+        // never in production.
+        if ($this->otp->canShowOtpInDevelopment()) {
+            $payload['dev_otp'] = $code;
+            session()->flash('dev_otp_message', 'کد تست امضا: '.$code);
+        }
+
+        return $this->ok($request, 'کد تأیید امضا ارسال شد.', $payload);
     }
 
     public function signContract(Request $request, RentalApplication $application)
@@ -294,15 +317,19 @@ class RentalApplicationController extends Controller
             return $this->fail($request, 'قراردادی برای امضا وجود ندارد.', 422);
         }
 
-        if (! $this->otp->verify((string) $request->user()->mobile, $data['code'])) {
-            return $this->fail($request, 'کد تأیید نادرست یا منقضی شده است.', 422);
-        }
+        $contract->setRelation('application', $application);
 
         try {
+            // Bound to THIS contract, not merely to the customer's mobile: a
+            // login code, or a code issued for another contract, cannot sign.
+            if (! $this->signatureOtp->verify($contract, $request->user(), $data['code'])) {
+                return $this->fail($request, 'کد تأیید نادرست یا منقضی شده است.', 422);
+            }
+
             $signature = $this->contracts->sign($contract, $request->user(), [
                 'ip' => (string) $request->ip(),
                 'user_agent' => (string) $request->userAgent(),
-                'otp_reference' => 'mobile:'.$request->user()->mobile,
+                'otp_reference' => 'contract:'.$contract->id,
             ]);
         } catch (\RuntimeException $e) {
             return $this->fail($request, $e->getMessage(), 422);

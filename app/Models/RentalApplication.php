@@ -18,8 +18,14 @@ use Illuminate\Support\Str;
  */
 class RentalApplication extends Model
 {
+    /**
+     * `state` is deliberately NOT here. It is written by
+     * RentalChainOrchestrator through an explicit property assignment, so no
+     * mass assignment -- and therefore no request payload, hidden field or
+     * route parameter -- can ever set it.
+     */
     protected $fillable = [
-        'application_number', 'user_id', 'order_id', 'state', 'correlation_id',
+        'application_number', 'user_id', 'order_id', 'correlation_id',
         'submitted_at', 'approved_at', 'rejected_at', 'cancelled_at',
         'rejection_reason', 'admin_note',
     ];

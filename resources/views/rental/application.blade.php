@@ -202,7 +202,7 @@
                                         <div class="md:col-span-2">
                                             <label class="block text-[11px] text-gray-500 mb-1">شناسه صیاد (۱۶ رقم)</label>
                                             <input type="text" name="sayad_id" inputmode="numeric" maxlength="16" dir="ltr"
-                                                   value="{{ old('sayad_id', $guarantee?->sayad_id) }}"
+                                                   placeholder="{{ $guarantee?->sayad_id_mask ?: '' }}"
                                                    class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brandBlue">
                                         </div>
                                         <div>

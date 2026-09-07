@@ -86,6 +86,29 @@ return [
         'hold_minutes' => env('RENTAL_HOLD_MINUTES'),
     ],
 
+    /*
+     * The post-approval lifecycle: Approved -> Active -> Returned -> Closed.
+     *
+     * TODO(business) B14. Every trigger below is null because the project
+     * defines none of them:
+     *
+     *   activation -- does a rental become Active on handover, on the
+     *                 reservation's start date, or on an admin's action?
+     *   return     -- who confirms a return, and does it require the
+     *                 return_video, an inspection, or a damage assessment?
+     *   closure    -- closure plausibly waits on the deposit being released
+     *                 (B4) and on media retention (B11), both undecided.
+     *
+     * While a trigger is null RentalChainOrchestrator::transitionPostApproval()
+     * refuses the transition and records `rental_application.policy_undefined`.
+     * Nothing derives these states, and no route exposes them.
+     */
+    'lifecycle' => [
+        'activation_trigger' => null,
+        'return_trigger' => null,
+        'closure_trigger' => null,
+    ],
+
     'contract' => [
         // Which contract_templates key ContractService::generate() renders.
         'template_key' => env('RENTAL_CONTRACT_TEMPLATE_KEY', 'rental_agreement'),

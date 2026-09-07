@@ -3,6 +3,7 @@
 namespace App\Services\Guarantee;
 
 use App\Enums\GuaranteeState;
+use App\Enums\RentalApplicationState;
 use App\Models\Guarantee;
 use App\Models\GuaranteeInquiry;
 use App\Models\RentalApplication;
@@ -14,6 +15,7 @@ use App\Services\Providers\ProviderCallLogger;
 use App\Services\Providers\ProviderConfig;
 use App\Services\Providers\ProviderException;
 use App\Support\Guarantee\SayadId;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -42,19 +44,49 @@ class GuaranteeService
         return ProviderConfig::for('guarantee');
     }
 
+    /**
+     * Records the guarantee facts for a PAID application.
+     *
+     * The payment gate is not a business rule invented here -- it is the
+     * documented ladder (Paid -> GuaranteePending -> GuaranteeVerified). Without
+     * it a Draft application could create a guarantee row and skip payment,
+     * because the orchestrator derives state from the child records it finds.
+     */
     public function submit(RentalApplication $application, array $data): Guarantee
     {
+        $allowed = [
+            RentalApplicationState::Paid,
+            RentalApplicationState::GuaranteePending,
+        ];
+
+        if (! in_array($application->state, $allowed, true)) {
+            throw new \RuntimeException('ثبت ضمانت پس از پرداخت اجاره امکان‌پذیر است.');
+        }
+
         $sayadId = SayadId::normalise((string) ($data['sayad_id'] ?? ''));
 
         if ($sayadId !== '' && ! SayadId::isValid($sayadId)) {
             throw new \InvalidArgumentException('شناسه صیاد وارد شده معتبر نیست.');
         }
 
-        $guarantee = Guarantee::updateOrCreate(
-            ['rental_application_id' => $application->id],
-            [
+        if ($sayadId !== '' && $this->sayadIdTakenByAnother($application, $sayadId)) {
+            throw new \RuntimeException('این شناسه صیاد قبلاً برای ضمانت دیگری ثبت شده است.');
+        }
+
+        [$guarantee, $changed] = DB::transaction(function () use ($application, $data, $sayadId) {
+            $guarantee = Guarantee::where('rental_application_id', $application->id)
+                ->lockForUpdate()
+                ->first() ?? new Guarantee(['rental_application_id' => $application->id]);
+
+            // Replacing a verified guarantee is not a decided business rule,
+            // so a re-submission against one is a no-op rather than a silent
+            // downgrade back to Submitted.
+            if ($guarantee->state === GuaranteeState::Verified) {
+                return [$guarantee, false];
+            }
+
+            $guarantee->fill([
                 'type' => $data['type'] ?? Guarantee::TYPE_CHEQUE,
-                'sayad_id' => $sayadId ?: null,
                 // TODO(business) B5: no amount rule is defined, so the
                 // submitted amount is recorded as-is and NOT validated against
                 // the deposit or the device value.
@@ -63,21 +95,45 @@ class GuaranteeService
                 'bank_code' => $data['bank_code'] ?? null,
                 'bank_name' => $data['bank_name'] ?? null,
                 'state' => GuaranteeState::Submitted,
-            ],
-        );
+            ]);
 
-        AuditLogger::log(
-            action: 'guarantee.submitted',
-            resourceType: 'Guarantee',
-            resourceId: $guarantee->id,
-            context: [
-                'type' => $guarantee->type,
-                'sayad_id_mask' => $sayadId ? SayadId::mask($sayadId) : null,
-                'amount_rule' => $this->config()->get('amount_rule') ?? 'undefined',
-            ],
-        );
+            // Encryption is randomised, so re-encrypting an unchanged id would
+            // look like a change and re-trigger the audit row.
+            $hash = $sayadId === '' ? null : Guarantee::hashSayadId($sayadId);
+
+            if ($guarantee->sayad_id_hash !== $hash) {
+                $guarantee->setSayadId($sayadId);
+            }
+
+            $changed = $guarantee->isDirty();
+            $guarantee->save();
+
+            return [$guarantee, $changed];
+        });
+
+        // Re-submitting the same facts is a no-op, so it writes no audit row.
+        if ($changed) {
+            AuditLogger::log(
+                action: 'guarantee.submitted',
+                resourceType: 'Guarantee',
+                resourceId: $guarantee->id,
+                context: [
+                    'type' => $guarantee->type,
+                    'sayad_id_mask' => $guarantee->sayad_id_mask,
+                    'amount_rule' => $this->config()->get('amount_rule') ?? 'undefined',
+                ],
+            );
+        }
 
         return $guarantee;
+    }
+
+    /** The Sayad id is unique nationally; the hash column enforces it. */
+    private function sayadIdTakenByAnother(RentalApplication $application, string $sayadId): bool
+    {
+        return Guarantee::where('sayad_id_hash', Guarantee::hashSayadId($sayadId))
+            ->where('rental_application_id', '!=', $application->id)
+            ->exists();
     }
 
     /**
@@ -85,6 +141,12 @@ class GuaranteeService
      */
     public function runInquiries(Guarantee $guarantee): Guarantee
     {
+        // Re-running against a verified guarantee would reset it to Inquiring
+        // and then re-audit the same verification.
+        if ($guarantee->state === GuaranteeState::Verified) {
+            return $guarantee;
+        }
+
         $guarantee->update(['state' => GuaranteeState::Inquiring]);
 
         $nationalCode = $guarantee->application?->user?->identity?->nationalCode();
@@ -118,7 +180,7 @@ class GuaranteeService
         ]);
 
         $logger = new ProviderCallLogger($config);
-        $sayadId = (string) $guarantee->sayad_id;
+        $sayadId = (string) $guarantee->sayadId();
 
         try {
             ['result' => $result, 'duration_ms' => $durationMs] = $logger->around(
@@ -230,6 +292,12 @@ class GuaranteeService
             ->pluck('kind')
             ->unique()
             ->all();
+
+        // Already verified: re-running the inquiries must not write a second
+        // verified_at or a second audit row.
+        if ($guarantee->state === GuaranteeState::Verified) {
+            return $guarantee;
+        }
 
         if (array_diff($required, $passed) === []) {
             $guarantee->update(['state' => GuaranteeState::Verified, 'verified_at' => now()]);

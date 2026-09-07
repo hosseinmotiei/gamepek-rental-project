@@ -59,7 +59,7 @@ $defaults = [
     'logging' => [
         'log_request' => true,
         'log_response' => true,
-        'redact' => ['national_code', 'pan', 'card_number', 'iban', 'sheba', 'otp', 'secret', 'token', 'api_key'],
+        'redact' => ['national_code', 'pan', 'card_number', 'iban', 'sheba', 'sayad_id', 'otp', 'secret', 'token', 'api_key'],
     ],
     'retention' => [
         'raw_days' => 30,        // raw provider request/response payloads

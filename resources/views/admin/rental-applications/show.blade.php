@@ -105,7 +105,7 @@
         @php($guarantee = $application->guarantee)
         <dl class="grid grid-cols-2 md:grid-cols-4 gap-y-3 gap-x-6 text-sm mb-4">
             <div><dt class="text-xs text-gray-400">نوع</dt><dd class="text-gray-800">{{ $guarantee->type }}</dd></div>
-            <div><dt class="text-xs text-gray-400">شناسه صیاد</dt><dd class="font-mono text-gray-700" dir="ltr">{{ $guarantee->sayad_id ?: '—' }}</dd></div>
+            <div><dt class="text-xs text-gray-400">شناسه صیاد</dt><dd class="font-mono text-gray-700" dir="ltr">{{ $guarantee->sayad_id_mask ?: '—' }}</dd></div>
             <div><dt class="text-xs text-gray-400">مبلغ</dt><dd class="text-gray-700">{{ $guarantee->amount ? persian_number(number_format($guarantee->amount)).' تومان' : '—' }}</dd></div>
             <div><dt class="text-xs text-gray-400">تطابق مالکیت</dt><dd class="text-gray-700">{{ $guarantee->ownership_match === null ? 'نامشخص' : ($guarantee->ownership_match ? 'منطبق' : 'مغایر') }}</dd></div>
         </dl>
