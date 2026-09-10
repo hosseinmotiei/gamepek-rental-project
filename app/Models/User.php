@@ -68,6 +68,22 @@ class User extends Authenticatable
     // Blade template touches it (`$user->loadMissing('identity')`).
     // ──────────────────────────────────────────────────────────────────────
 
+    /**
+     * The device-owner profile, if this account has become an owner.
+     *
+     * Null for an ordinary customer. Having this row IS the owner capability --
+     * there is no parallel Spatie role, so the two cannot drift.
+     */
+    public function owner()
+    {
+        return $this->hasOne(Owner::class);
+    }
+
+    public function isOwner(): bool
+    {
+        return $this->owner !== null;
+    }
+
     public function identity()
     {
         return $this->hasOne(UserIdentity::class);

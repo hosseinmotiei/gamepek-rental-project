@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\BannerController as AdminBannerController;
 use App\Http\Controllers\Admin\CategoryController as AdminCategoryController;
 use App\Http\Controllers\Admin\CouponController as AdminCouponController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DeviceController as AdminDeviceController;
 use App\Http\Controllers\Admin\HomeSectionController as AdminHomeSectionController;
 use App\Http\Controllers\Admin\MenuController as AdminMenuController;
 use App\Http\Controllers\Admin\MessageController as AdminMessageController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\MediaController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\MockPaymentController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\OwnerDeviceController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RentalApplicationController;
@@ -188,6 +190,23 @@ Route::middleware('auth')->group(function () {
         Route::post('/{application}/contract/sign', [RentalApplicationController::class, 'signContract'])
             ->middleware('throttle:rental-signature')
             ->name('contract.sign');
+    });
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Owner side of the fleet: a user's own devices.
+    //
+    // Authenticated by the same `auth` group as everything else -- there is no
+    // second login. Owner capability is the presence of an Owner profile, and
+    // every action is authorised server-side by DevicePolicy/OwnerPolicy, not
+    // by which links the UI happens to render.
+    // ──────────────────────────────────────────────────────────────────────
+    Route::prefix('owner')->name('owner.')->group(function () {
+        Route::get('/', [OwnerDeviceController::class, 'dashboard'])->name('dashboard');
+        Route::post('/', [OwnerDeviceController::class, 'store'])->name('store');
+        Route::get('/devices/create', [OwnerDeviceController::class, 'create'])->name('devices.create');
+        Route::post('/devices', [OwnerDeviceController::class, 'storeDevice'])->name('devices.store');
+        Route::get('/devices/{device}', [OwnerDeviceController::class, 'show'])->name('devices.show');
+        Route::post('/devices/{device}/disable', [OwnerDeviceController::class, 'disable'])->name('devices.disable');
     });
 });
 
@@ -405,6 +424,26 @@ Route::prefix('admin')->name('admin.')->group(function () {
         });
 
         Route::get('/audit-events', [AdminAuditEventController::class, 'index'])->name('audit-events.index');
+
+        // ──────────────────────────────────────────────────────────────────
+        // Physical fleet: owners and devices.
+        //
+        // Review and inspection only. Pickup, inspection, delivery, return and
+        // settlement screens belong to the operations phase.
+        // ──────────────────────────────────────────────────────────────────
+        Route::prefix('owners')->name('owners.')->group(function () {
+            Route::get('/', [AdminDeviceController::class, 'owners'])->name('index');
+            Route::get('/{owner}', [AdminDeviceController::class, 'showOwner'])->name('show');
+        });
+
+        Route::prefix('devices')->name('devices.')->group(function () {
+            Route::get('/', [AdminDeviceController::class, 'index'])->name('index');
+            // GamePek's own stock: no owner account is involved.
+            Route::post('/gamepek', [AdminDeviceController::class, 'storeGamePekDevice'])->name('gamepek.store');
+            Route::get('/{device}', [AdminDeviceController::class, 'show'])->name('show');
+            Route::post('/{device}/approve', [AdminDeviceController::class, 'approve'])->name('approve');
+            Route::post('/{device}/reject', [AdminDeviceController::class, 'reject'])->name('reject');
+        });
 
         // ── Activity Logs ─────────────────────────────────────────────────────
         Route::prefix('activity-logs')->name('activity-logs.')->group(function () {

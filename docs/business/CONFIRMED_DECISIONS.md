@@ -124,8 +124,9 @@ this.**
 | C-09 | Reservation only after verified payment | **Reversed.** The chain is `ReservationHeld → PaymentPending → Paid` — the reservation is created first |
 | C-10 | No unpaid hold | **Unpaid holds exist.** `RentalReservation` is created in state `held` before any payment |
 | C-11 | Abandoned applications must not block inventory | **They do block.** Reservations are never released; a rejected or abandoned application blocks its dates permanently |
-| C-12 / C-13 | Product → many serialised Device Units | **No Device or Device Unit entity exists.** Reservations point at `products.id` |
-| C-14 / C-15 / C-16 | Owner domain, owner-chosen availability | **No Owner entity exists.** Availability comes from reservations plus a static JSON blob |
+| C-12 / C-13 | Product → many serialised Device Units | **Implemented.** `devices` holds one row per physical console with a unique normalised serial; one product has many. `Device` IS the unit — no separate `device_units` table. Reservations still allocate at product level: `rental_reservations.device_id` exists but is always NULL, because the allocation rule is undecided |
+| C-14 / C-15 | Owner domain, mixed fleet | **Implemented.** `owners` (1:1 with `users`) plus `devices.ownership` = `gamepek` \| `owner`, bound by a CHECK constraint. GamePek stock needs no owner account. Owner registration, admin review (approve/reject) and ownership isolation are in place |
+| C-16 | Owner-chosen availability | **Not implemented.** Owner availability calendars are a later phase; availability still comes from reservations only |
 | C-21 / C-22 | Admin-controlled multi-day discounts | Duration discount tiers exist in `config('rental.pricing.duration_discounts')` but are a **hardcoded placeholder**, not admin-editable and not owner-approved values |
 | C-23 | Selected game affects price | `RentalPricingService::quote()` accepts a `gameFee` parameter, but it is **always passed 0**; there is no game selection |
 | C-26 / C-27 / C-28 | 35/65 split, daily settlement | **No settlement, commission or payout code exists** |
@@ -153,7 +154,16 @@ the owner decides it, and several additionally require legal review.
 - Dispute policy
 - Exact damage valuation methodology
 - Lost-device valuation
-- Owner device-disable penalty amount / formula
+- Owner device-disable penalty amount / formula — an owner **can** disable a
+  device today (`DeviceState::Disabled`, recorded and audited) and **nothing is
+  charged, deducted or escalated**, because the penalty is undefined
+- Whether owner verification must COMPLETE before that owner may register a
+  device — registration is currently permitted from `pending_verification`,
+  since nothing goes live on it: every device still needs admin approval
+- Which free device a paid reservation is allocated (prefer GamePek stock,
+  rotate for owner fairness, favour condition?) — interacts with the 35/65
+  split and daily settlement
+- Device condition taxonomy — `devices.condition` is free text, no grades invented
 - Courier / delivery provider
 
 ### 4.2 Requires legal review

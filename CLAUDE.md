@@ -461,18 +461,25 @@ screens still render Gregorian.
 
 Do not resolve any of these by choosing. Ask.
 
-1. **GamePek-owned devices vs third-party owners.** Is this a rental shop
-   with a GamePek-owned fleet, or a marketplace with third-party owners?
-   Nothing in the repository answers this, and it is the **largest
-   architectural unknown** — the data model, settlement, admin panel and
-   legal posture are all downstream of it.
-2. **One `Product` row = one physical device, or a pool?** Explicitly flagged
-   in `RentalReservationService`'s docblock as the thing blocking the
-   `Product::isInStock()` rewrite. With a pool, an overlap is not
-   automatically a conflict.
+1. ~~GamePek-owned devices vs third-party owners~~ — **ANSWERED: both.** The
+   fleet is mixed. `devices.ownership` is `gamepek` or `owner`, with a CHECK
+   constraint binding it to `owner_id`. GamePek stock needs no fake owner
+   account. Implemented in the owner/device phase.
+2. ~~One `Product` row = one physical device, or a pool?~~ — **ANSWERED: a
+   pool.** One product, many `devices`, each with its own unique serial.
+   **`Device` IS the rentable unit** — there is deliberately no separate
+   `device_units` table, because a device row already carries exactly one
+   serial and a 1:1 satellite would be duplication with no invariant behind
+   it. See the devices migration.
 3. **Product naming / domain model.** The catalog entity is still
    `Product`/`products`. Renaming is a domain decision that has not been
-   made.
+   made. Note the distinction now matters: `products` is the catalog item,
+   `devices` is the physical inventory.
+3b. **Which free device a paid reservation gets.** `rental_reservations.device_id`
+   exists and is always NULL — reservations still allocate at product level
+   (Phase 02). The allocation rule (prefer GamePek stock? rotate for owner
+   fairness? favour condition?) interacts with the 35/65 split and daily
+   settlement and is **undecided**. Nothing fakes an allocation.
 4. **Store user-data import status.** The `users`, `addresses` and
    `otp_codes` schemas are deliberately identical to the Store's because the
    owner intends to import existing user data before launch. Whether that has

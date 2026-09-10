@@ -3,11 +3,15 @@
 namespace App\Providers;
 
 use App\Models\Address;
+use App\Models\Device;
 use App\Models\Order;
+use App\Models\Owner;
 use App\Models\RentalApplication;
 use App\Models\VerificationMedia;
 use App\Policies\AddressPolicy;
+use App\Policies\DevicePolicy;
 use App\Policies\OrderPolicy;
+use App\Policies\OwnerPolicy;
 use App\Policies\RentalApplicationPolicy;
 use App\Policies\VerificationMediaPolicy;
 use App\Services\Otp\OtpProviderInterface;
@@ -24,7 +28,9 @@ class AppServiceProvider extends ServiceProvider
 {
     protected $policies = [
         Address::class => AddressPolicy::class,
+        Device::class => DevicePolicy::class,
         Order::class => OrderPolicy::class,
+        Owner::class => OwnerPolicy::class,
         RentalApplication::class => RentalApplicationPolicy::class,
         VerificationMedia::class => VerificationMediaPolicy::class,
     ];

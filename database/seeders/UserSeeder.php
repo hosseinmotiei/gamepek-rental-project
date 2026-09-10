@@ -81,6 +81,8 @@ class UserSeeder extends Seeder
             'view_contracts', 'manage_contracts',
             'view_rental_applications', 'manage_rental_applications',
             'view_audit_events', 'view_sms', 'refund_payments',
+            // Owner / physical device fleet (mixed GamePek + third-party).
+            'view_owners', 'view_devices', 'manage_devices',
         ];
         $permissions = [];
         foreach ($permissionNames as $name) {
@@ -102,6 +104,9 @@ class UserSeeder extends Seeder
             'view_products', 'create_products', 'edit_products', 'manage_inventory', 'manage_product_images',
             'view_categories', 'create_categories', 'edit_categories',
             'view_reports', 'view_product_reports', 'view_category_reports', 'view_low_stock_reports',
+            // Physical rental devices are inventory, so they sit with the
+            // product manager rather than with the rental-chain reviewer.
+            'view_owners', 'view_devices', 'manage_devices',
         ]));
 
         $roles['order_manager']->syncPermissions($pick([
