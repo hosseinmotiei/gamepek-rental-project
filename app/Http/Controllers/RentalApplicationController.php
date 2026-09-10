@@ -38,6 +38,24 @@ class RentalApplicationController extends Controller
         private SignatureOtpService $signatureOtp,
     ) {}
 
+    /**
+     * The customer's own rental applications, newest first.
+     *
+     * Scoped through the user relation rather than a policy check per row --
+     * the same pattern OrderController::index() uses -- so this can never
+     * return another customer's applications regardless of query input.
+     */
+    public function index(Request $request)
+    {
+        $applications = $request->user()
+            ->rentalApplications()
+            ->with('product')
+            ->latest()
+            ->paginate(10);
+
+        return view('rental.index', ['applications' => $applications]);
+    }
+
     public function store(Request $request)
     {
         $application = $this->reservations->openApplication($request->user());
