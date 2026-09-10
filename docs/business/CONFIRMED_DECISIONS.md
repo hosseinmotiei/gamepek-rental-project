@@ -126,7 +126,9 @@ this.**
 | C-11 | Abandoned applications must not block inventory | **They do block.** Reservations are never released; a rejected or abandoned application blocks its dates permanently |
 | C-12 / C-13 | Product → many serialised Device Units | **Implemented.** `devices` holds one row per physical console with a unique normalised serial; one product has many. `Device` IS the unit — no separate `device_units` table. Reservations still allocate at product level: `rental_reservations.device_id` exists but is always NULL, because the allocation rule is undecided |
 | C-14 / C-15 | Owner domain, mixed fleet | **Implemented.** `owners` (1:1 with `users`) plus `devices.ownership` = `gamepek` \| `owner`, bound by a CHECK constraint. GamePek stock needs no owner account. Owner registration, admin review (approve/reject) and ownership isolation are in place |
-| C-16 | Owner-chosen availability | **Not implemented.** Owner availability calendars are a later phase; availability still comes from reservations only |
+| C-16 | Owner-chosen availability | **Not implemented, and blocked.** There is no owner availability table, model, service, route or screen. Availability is derived from `rental_reservations` alone. Building the calendar needs four undecided answers — see §4.1 |
+| C-03 / C-04 | Date-based, minimum one day | **Implemented and now pinned.** Ranges are inclusive on both ends (`end = start + days - 1`), so a one-day rental occupies only its start date. The search form used to reject `from == to`, making the shortest rental GamePek sells unsearchable, and reported every window one day short |
+| C-05 | Maximum duration unlimited | **Diverges.** `RentalApplicationController::reserve()` validates `days` as `max:365`. The availability authority imposes no maximum. Whether the 365-day cap is a real rule or leftover scaffolding is unconfirmed — it was left in place rather than removed on a guess |
 | C-17 | Device available again per operational state | **Partially implemented.** The operational domain now exists for one step only: a paid reservation opens an `owner_device_pickup` task in `rental_operations`, and `device_custody_transfers` records who physically holds the device. Inspection, delivery, customer return and owner return are NOT implemented, so a device never becomes available again through an operational path |
 | C-21 / C-22 | Admin-controlled multi-day discounts | Duration discount tiers exist in `config('rental.pricing.duration_discounts')` but are a **hardcoded placeholder**, not admin-editable and not owner-approved values |
 | C-23 | Selected game affects price | `RentalPricingService::quote()` accepts a `gameFee` parameter, but it is **always passed 0**; there is no game selection |
@@ -172,6 +174,22 @@ the owner decides it, and several additionally require legal review.
 - Whether a device already in GamePek custody may be released or re-picked-up
   without a completed rental — no such transition exists
 - Device condition taxonomy — `devices.condition` is free text, no grades invented
+- **The owner availability calendar (C-16) cannot be built until these are
+  decided.** C-16 confirms owners choose their dates, but not what that means:
+  1. **Default.** With no availability record, is a device available always or
+     never? Opposite answers, both defensible. One takes the whole fleet off
+     the market; the other makes owner calendars decorative
+  2. **How device availability reaches the customer.** Customers book a
+     PRODUCT, because device allocation is undecided. Owner availability is
+     per DEVICE. Connecting them means defining "product available" in terms
+     of individual devices, which is the allocation question wearing a hat
+  3. **GamePek-owned stock.** `owner_id` is NULL and there is no owner to
+     choose dates. Does first-party stock have a calendar, and who edits it?
+  4. **Is availability a promise?** If an owner marks dates available and then
+     withdraws them, is anything owed? That reaches the undefined owner
+     penalty above
+  Until these are answered, availability stays reservation-derived. Nothing in
+  the code guesses at any of them
 - Courier / delivery provider
 
 ### 4.2 Requires legal review

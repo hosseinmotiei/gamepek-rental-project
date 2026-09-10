@@ -193,7 +193,13 @@ class ProductController extends Controller
             'city' => $city,
             'from' => $from,
             'to' => $to,
-            'days' => $from && $to ? (int) Carbon::parse($from)->diffInDays(Carbon::parse($to)) : null,
+            // Inclusive of both ends, matching how a rental is counted
+            // everywhere else (`end = start + days - 1`). A plain diff reports
+            // June 10 -> June 15 as 5 days when the customer is booking 6, and
+            // a one-day window as 0 days.
+            'days' => $from && $to
+                ? (int) Carbon::parse($from)->diffInDays(Carbon::parse($to)) + 1
+                : null,
             'searchErrors' => $errors,
         ]);
     }
@@ -231,8 +237,13 @@ class ProductController extends Controller
             return [null, null, 'تاریخ شروع نمی‌تواند در گذشته باشد.'];
         }
 
-        if ($to->lte($from)) {
-            return [null, null, 'تاریخ پایان باید بعد از تاریخ شروع باشد.'];
+        // Inclusive on both ends, matching how a rental is counted
+        // (`end = start + days - 1`) and how reservations overlap. `to == from`
+        // is therefore a legitimate ONE-DAY window, which C-04 sets as the
+        // minimum rental. This used to reject it, so the shortest rental the
+        // business actually sells could not be searched for at all.
+        if ($to->lt($from)) {
+            return [null, null, 'تاریخ پایان نمی‌تواند پیش از تاریخ شروع باشد.'];
         }
 
         $maxDays = (int) config('rental.search.max_days', 90);

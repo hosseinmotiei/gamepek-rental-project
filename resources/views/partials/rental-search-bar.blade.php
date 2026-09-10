@@ -114,12 +114,17 @@
             };
 
             // The end date is not merely validated against the start — days
-            // before it are not offerable at all. Its floor is start + 1 day.
+            // before it are not offerable at all. Its floor is the start date
+            // ITSELF, not the day after: the window is inclusive on both ends,
+            // so from == to is a one-day rental, which C-04 makes the shortest
+            // rental GamePek sells. This used to floor at start + 1, which made
+            // the shortest real rental unselectable.
+            //
+            // This mirrors the server rule in ProductController::rentalWindow()
+            // for convenience only. The server is the authority and re-checks.
             function syncEndFloor() {
                 if (!fromInput.value || !toRoot.__jdp) return;
-                const next = new Date(fromInput.value + 'T00:00:00');
-                next.setDate(next.getDate() + 1);
-                toRoot.__jdp.setMin(next.toISOString().slice(0, 10));
+                toRoot.__jdp.setMin(fromInput.value);
             }
 
             fromInput.addEventListener('change', () => { syncEndFloor(); clearError(); });
@@ -132,9 +137,9 @@
                 if (!city) { e.preventDefault(); showError('لطفاً شهر یا مقصد را انتخاب کنید.'); return; }
                 if (!fromInput.value) { e.preventDefault(); showError('تاریخ شروع اجاره را انتخاب کنید.'); fromRoot.__jdp?.open(); return; }
                 if (!toInput.value) { e.preventDefault(); showError('تاریخ پایان اجاره را انتخاب کنید.'); toRoot.__jdp?.open(); return; }
-                if (toInput.value <= fromInput.value) {
+                if (toInput.value < fromInput.value) {
                     e.preventDefault();
-                    showError('تاریخ پایان باید بعد از تاریخ شروع باشد.');
+                    showError('تاریخ پایان نمی‌تواند پیش از تاریخ شروع باشد.');
                     return;
                 }
 

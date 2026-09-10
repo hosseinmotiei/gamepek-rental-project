@@ -94,6 +94,38 @@ both exist.
 
 ---
 
+## 2b. Availability has two axes — do not merge them
+
+`App\Services\Rental\RentalAvailabilityService` is the single authority, and it
+answers two different questions that must stay apart:
+
+| Method | Question | Axis |
+|---|---|---|
+| `isFree()` | is the inventory already committed? | **overlap** |
+| `bookingBlockedReason()` | may a customer book this window at all? | **time** |
+
+They are asked at different moments. `isFree()` also runs AFTER a payment
+clears, to re-check the range under a lock. If the "not in the past" rule lived
+inside it, a payment settling slightly late would find its own start date in the
+past and refuse to create the reservation for money already taken. **Never move
+the time rules into `isFree()`.**
+
+Ranges are **inclusive on both ends** (`end = start + days - 1`), everywhere:
+overlap, the calendar, the search window and its displayed day count. A one-day
+rental occupies only its start date. Dates are civil dates in `Asia/Tehran`,
+never timestamps — availability is date-based (C-03), never hourly.
+
+The overlap predicate exists once, in `RentalReservation::scopeOverlapping()`.
+A test asserts no second copy appears in `app/` or `resources/views/`. The UI
+may display availability; it must never compute it.
+
+**There is no owner availability calendar.** C-16 confirms owners choose their
+dates, but no table, model, service, route or screen exists, and four policy
+questions block building one — see `docs/business/CONFIRMED_DECISIONS.md` §4.1.
+Availability is derived from `rental_reservations` alone.
+
+---
+
 ## 3. Rental architecture — the central principle
 
 `RentalApplication` is the aggregate root. Its `state` column is **derived,

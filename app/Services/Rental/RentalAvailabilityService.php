@@ -5,6 +5,7 @@ namespace App\Services\Rental;
 use App\Models\RentalReservation;
 use App\Support\Rental\BlockedRange;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 /**
  * The single authority on "is this product free between these two dates?".
@@ -29,6 +30,73 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class RentalAvailabilityService
 {
+    /** C-04: the shortest rental is one day, and a 1-day rental occupies only its start date. */
+    public const MIN_DAYS = 1;
+
+    /**
+     * Why this range cannot be BOOKED, or null when it can.
+     *
+     * Separate from isFree() on purpose, and the distinction matters:
+     *
+     *   isFree()              "is the inventory free?"  -- about OVERLAP
+     *   bookingBlockedReason() "may a customer book it?" -- about TIME
+     *
+     * They are asked at different moments. isFree() is also called AFTER a
+     * payment clears, to re-check the range under a lock before writing the
+     * reservation. If the past-date rule lived in there, a payment that settled
+     * slightly late -- a gateway retry, a reconciliation run, a booking that
+     * starts today and clears just after midnight -- would find its own start
+     * date in the past and refuse to create the reservation for money already
+     * taken. So time rules live here and overlap rules live there.
+     *
+     * WHY THIS EXISTS AT ALL
+     *
+     * Three places already agreed that a past date is not bookable -- the
+     * product calendar (Availability::dayKind returns KIND_PAST), the search
+     * form (ProductController::rentalWindow rejects it) and the UI. The one
+     * place that actually writes a booking did not: `start_date` was validated
+     * as `['required', 'date']` and recordSelection() checked only the day
+     * count and the overlap. A selection ten days in the past was accepted.
+     *
+     * That is the same class of bug Phase 02 removed, on the time axis instead
+     * of the overlap axis: two answers to one question, and the authoritative
+     * one was the permissive one. The rule now lives here, once, so a caller
+     * cannot forget it.
+     *
+     * DATES, NOT TIMESTAMPS. `today` is the civil date in the application
+     * timezone (Asia/Tehran), matching C-03: availability is date-based, never
+     * hourly. A rental starting today is bookable all day.
+     *
+     * No upper bound on duration is imposed -- C-05 leaves the maximum
+     * unlimited. config('rental.search.max_days') caps the SEARCH FORM only.
+     */
+    public function bookingBlockedReason(string $startDate, int $days, ?string $today = null): ?string
+    {
+        if ($days < self::MIN_DAYS) {
+            return 'مدت اجاره باید حداقل یک روز باشد.';
+        }
+
+        try {
+            $start = Carbon::parse($startDate)->toDateString();
+        } catch (\Throwable) {
+            return 'فرمت تاریخ نامعتبر است.';
+        }
+
+        $today ??= now()->toDateString();
+
+        if ($start < $today) {
+            return 'تاریخ شروع نمی‌تواند در گذشته باشد.';
+        }
+
+        return null;
+    }
+
+    /** Convenience wrapper. The reason is what callers should surface. */
+    public function isBookableRange(string $startDate, int $days, ?string $today = null): bool
+    {
+        return $this->bookingBlockedReason($startDate, $days, $today) === null;
+    }
+
     /**
      * Is the product free for the whole inclusive range?
      *

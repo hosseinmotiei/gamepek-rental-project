@@ -77,10 +77,15 @@ class RentalReservationService
             throw new \RuntimeException('این محصول قابل اجاره نیست.');
         }
 
-        // C-20: minimum rental duration is one day. C-21 leaves the maximum
-        // unlimited, so no upper bound is imposed here.
-        if ($days < 1) {
-            throw new \RuntimeException('مدت اجاره باید حداقل یک روز باشد.');
+        // Time rules -- minimum duration and "not in the past" -- come from the
+        // availability authority so this path cannot drift from the calendar
+        // and the search form. It previously enforced only the day count, and
+        // a start date in the past was accepted here while every read path
+        // showed it as unbookable.
+        //
+        // No maximum is imposed: C-05 leaves rental duration unlimited.
+        if ($reason = $this->availability->bookingBlockedReason($startDate, $days)) {
+            throw new \RuntimeException($reason);
         }
 
         $start = Carbon::parse($startDate)->startOfDay();

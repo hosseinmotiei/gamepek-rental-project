@@ -100,7 +100,7 @@ class HomeSearchFlowTest extends TestCase
     public function test_an_invalid_window_is_refused_by_the_server(): void
     {
         $cases = [
-            ['from' => $this->to, 'to' => $this->from, 'message' => 'تاریخ پایان باید بعد از تاریخ شروع باشد.'],
+            ['from' => $this->to, 'to' => $this->from, 'message' => 'تاریخ پایان نمی‌تواند پیش از تاریخ شروع باشد.'],
             ['from' => now()->subDay()->toDateString(), 'to' => $this->to, 'message' => 'تاریخ شروع نمی‌تواند در گذشته باشد.'],
             ['from' => 'not-a-date', 'to' => $this->to, 'message' => 'فرمت تاریخ نامعتبر است.'],
             ['from' => $this->from, 'to' => '', 'message' => 'هر دو تاریخ شروع و پایان را وارد کنید.'],
@@ -108,10 +108,31 @@ class HomeSearchFlowTest extends TestCase
         ];
 
         foreach ($cases as $case) {
+            // Asserted on the SERVER's error bag, not on the rendered HTML.
+            // The search bar's inline JavaScript carries some of these same
+            // strings as literals, so a text assertion could pass on markup
+            // the server never produced.
             $this->get(route('products.search', ['city' => 'تهران', 'from' => $case['from'], 'to' => $case['to']]))
                 ->assertOk()
-                ->assertSee($case['message'], false);
+                ->assertViewHas('searchErrors', fn ($errors) => str_contains(
+                    (string) (((array) $errors)['dates'] ?? ''),
+                    $case['message'],
+                ));
         }
+    }
+
+    /**
+     * The shortest rental GamePek sells must be searchable.
+     *
+     * C-04 sets the minimum at one day, and the window is inclusive on both
+     * ends, so from == to is legitimate. The server used to reject it.
+     */
+    public function test_a_one_day_window_is_accepted_by_the_server(): void
+    {
+        $this->get(route('products.search', ['city' => 'تهران', 'from' => $this->from, 'to' => $this->from]))
+            ->assertOk()
+            ->assertViewHas('searchErrors', fn ($errors) => ! array_key_exists('dates', (array) $errors))
+            ->assertViewHas('days', 1);
     }
 
     public function test_an_unsupported_city_is_rejected(): void
