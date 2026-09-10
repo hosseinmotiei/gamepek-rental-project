@@ -48,12 +48,16 @@ repository has a **test suite of 171 test methods**.
 | Admin verification / rental-application / audit screens | Implemented |
 | Reservation release or expiry | **Not implemented** |
 | Post-approval lifecycle (Active / Returned / Closed) | **Deliberately blocked — B14** |
-| Owner / lessor domain | **Does not exist** |
+| Owner / lessor domain | Implemented — owners, mixed fleet, serials, admin review |
+| Operational task domain (owner device pickup) | Implemented — pickup only |
+| Device custody history (owner -> GamePek) | Implemented — custody is separate from ownership |
 | Live payment gateway | Not implemented — no credentials |
 | Live KYC / bank / cheque providers | Not implemented — none chosen |
 | Rental SMS notifications | Not implemented — no approved copy (B13) |
 | Wallet | **Frontend `localStorage` prototype only** |
-| Delivery / pickup / inspection / return / damage | Not implemented |
+| Device allocation to a reservation | **Not implemented — undecided policy (section 10.3b)** |
+| Inspection / delivery / customer return / owner return / damage | Not implemented |
+| Receipt or signature for a custody handover | **Not implemented — open legal gate** |
 
 The catalog entity is still named `Product`/`products`, and rental facts live
 in `products.attributes['_rental']` (JSON) with **no rental columns**.
@@ -475,11 +479,24 @@ Do not resolve any of these by choosing. Ask.
    `Product`/`products`. Renaming is a domain decision that has not been
    made. Note the distinction now matters: `products` is the catalog item,
    `devices` is the physical inventory.
-3b. **Which free device a paid reservation gets.** `rental_reservations.device_id`
-   exists and is always NULL — reservations still allocate at product level
-   (Phase 02). The allocation rule (prefer GamePek stock? rotate for owner
-   fairness? favour condition?) interacts with the 35/65 split and daily
-   settlement and is **undecided**. Nothing fakes an allocation.
+3b. **Which free device a paid reservation gets.** The allocation RULE is
+   **undecided** (prefer GamePek stock? rotate for owner fairness? favour
+   condition?) and it interacts with the 35/65 split and daily settlement.
+   Nothing in the code chooses a device. A paid reservation is still made at
+   product level (Phase 02), and the operational pickup task that comes with
+   it sits in `awaiting_device_allocation` until a human names a device
+   explicitly on the admin operations screen.
+   `RentalOperationService::attachDevice()` validates the device it is GIVEN;
+   there is deliberately no overload that finds one. Do not add one.
+3c. **What follows a failed pickup.** Recording a failure does nothing else:
+   no refund, no owner penalty, no replacement device, no reservation
+   cancellation, no suspension. Every one of those is undecided — see
+   `docs/business/CONFIRMED_DECISIONS.md` §4.
+3d. **Legal effect of a custody handover.** `custody.acknowledged` is the
+   owner confirming GamePek's record of the handover. It is **not** a
+   signature, not legal acceptance, and says nothing about the condition of
+   the device. Receipt and signature requirements are an open legal gate, and
+   physical inspection is a later phase.
 4. **Store user-data import status.** The `users`, `addresses` and
    `otp_codes` schemas are deliberately identical to the Store's because the
    owner intends to import existing user data before launch. Whether that has
@@ -606,6 +623,7 @@ See `.claude/rules/database.md` for the full set. The non-negotiables:
 |---|---|
 | **`CLAUDE.md`** (this file) | Operational rules and current project state |
 | **[`docs/rental-flow-fa.md`](docs/rental-flow-fa.md)** | **The deep technical reference.** Persian/RTL, 762 lines: chain map, Jalali internals, search data path, payment contract, verification/contract design, admin panel, audit layer, 12 documented bug fixes with their real-world impact, RTL conventions, test matrix, manual test scenario with fixture data, and the B-register. **Read it before non-trivial rental work.** |
+| **[`docs/operations/OPERATIONS_AND_CUSTODY.md`](docs/operations/OPERATIONS_AND_CUSTODY.md)** | **The operations and custody domain.** Why custody is not ownership, the pickup state machine, why no device is ever chosen automatically, why GamePek-owned stock gets no transfer row, and the explicit list of what is NOT implemented. Read it before touching `rental_operations` or `device_custody_transfers`. |
 | **[`docs/business/CONFIRMED_DECISIONS.md`](docs/business/CONFIRMED_DECISIONS.md)** | **Confirmed business policy.** What is decided (C-01…C-30), where the code still diverges from it, and what remains a policy/legal gate. Check here before assuming a rule is undecided — and before assuming a confirmed rule is implemented. |
 | **[`docs/integrations/PROVIDER_STATUS.md`](docs/integrations/PROVIDER_STATUS.md)** | Per-integration status: implemented / fake / unconfigured / TBD, with the env vars and interfaces for each |
 | `README.md` | Stack, local setup, seeded accounts, storage notes, provider and payment status |

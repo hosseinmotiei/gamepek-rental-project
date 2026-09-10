@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ReservationState;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class RentalReservation extends Model
 {
@@ -44,6 +45,23 @@ class RentalReservation extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * The physical device serving this reservation.
+     *
+     * NULL on every row written today: which free device a paid reservation
+     * gets is an undecided policy (see the device_id migration). It is filled
+     * only when a human attaches one explicitly through an operational task.
+     */
+    public function device(): BelongsTo
+    {
+        return $this->belongsTo(Device::class);
+    }
+
+    public function operations(): HasMany
+    {
+        return $this->hasMany(RentalOperation::class, 'rental_reservation_id');
     }
 
     /**

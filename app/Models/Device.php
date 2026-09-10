@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CustodyActor;
 use App\Enums\DeviceOwnership;
 use App\Enums\DeviceState;
 use App\Enums\DeviceVerificationState;
@@ -76,6 +77,40 @@ class Device extends Model
     public function reservations(): HasMany
     {
         return $this->hasMany(RentalReservation::class);
+    }
+
+    public function custodyTransfers(): HasMany
+    {
+        return $this->hasMany(DeviceCustodyTransfer::class);
+    }
+
+    /**
+     * Who physically holds this device right now.
+     *
+     * DERIVED, never stored. There is no `current_custody` column on purpose:
+     * a stored copy and this computation are two places to disagree, and the
+     * one that would silently win is the stale one.
+     *
+     * With no recorded handover the holder is whoever owns it -- a GamePek
+     * console sitting in the GamePek warehouse needs no GamePek -> GamePek
+     * transfer row to prove GamePek has it, and writing one would be recording
+     * a handover that never happened.
+     *
+     * `requested` transfers are ignored: asking for a device is not holding it.
+     */
+    public function currentCustody(): CustodyActor
+    {
+        $latest = $this->relationLoaded('custodyTransfers')
+            ? $this->custodyTransfers->filter->isPossessionMoved()->sortByDesc('id')->first()
+            : $this->custodyTransfers()->possessionMoved()->latest('id')->first();
+
+        return $latest?->to_actor_type
+            ?? ($this->isOwnedByGamePek() ? CustodyActor::GamePek : CustodyActor::Owner);
+    }
+
+    public function isInGamePekCustody(): bool
+    {
+        return $this->currentCustody() === CustodyActor::GamePek;
     }
 
     public function isOwnedByGamePek(): bool

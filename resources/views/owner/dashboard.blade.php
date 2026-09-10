@@ -24,10 +24,16 @@
                 <span class="font-medium">{{ $owner->state->label() }}</span>
             </p>
         </div>
-        <a href="{{ route('owner.devices.create') }}"
-           class="bg-brandBlue text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-blue-700 transition-colors text-center">
-            <i class="fa-solid fa-plus ml-1"></i> ثبت دستگاه جدید
-        </a>
+        <div class="flex gap-2">
+            <a href="{{ route('owner.operations.index') }}"
+               class="border border-gray-200 text-gray-700 rounded-xl px-4 py-2.5 text-sm font-bold hover:border-gray-300 transition-colors text-center">
+                <i class="fa-solid fa-dolly ml-1"></i> تحویل دستگاه‌ها
+            </a>
+            <a href="{{ route('owner.devices.create') }}"
+               class="bg-brandBlue text-white rounded-xl px-4 py-2.5 text-sm font-bold hover:bg-blue-700 transition-colors text-center">
+                <i class="fa-solid fa-plus ml-1"></i> ثبت دستگاه جدید
+            </a>
+        </div>
     </div>
 
     @if (session('success'))

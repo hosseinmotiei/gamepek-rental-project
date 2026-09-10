@@ -1,0 +1,252 @@
+@extends('admin.layouts.app')
+
+@section('title', 'جزئیات عملیات')
+@section('page_badge', 'عملیات')
+@section('breadcrumb') <a href="{{ route('admin.operations.index') }}" class="text-gray-500 text-sm hover:text-gray-700">عملیات</a> <span class="text-gray-300 mx-1">/</span> <span class="text-gray-700 text-sm">جزئیات</span> @endsection
+
+@section('content')
+@php
+    use App\Enums\CustodyActor;
+    use App\Enums\RentalOperationState;
+
+    $badge = match ($operation->state) {
+        RentalOperationState::Completed => 'bg-green-50 text-green-700 border-green-200',
+        RentalOperationState::InProgress => 'bg-blue-50 text-blue-700 border-blue-200',
+        RentalOperationState::Scheduled => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+        RentalOperationState::AwaitingDeviceAllocation => 'bg-amber-50 text-amber-700 border-amber-200',
+        RentalOperationState::Failed => 'bg-red-50 text-red-700 border-red-200',
+        RentalOperationState::NotRequired => 'bg-gray-100 text-gray-600 border-gray-200',
+        RentalOperationState::Pending => 'bg-gray-50 text-gray-500 border-gray-200',
+    };
+
+    $transfer = $operation->custodyTransfer;
+    $canManage = auth()->user()->can('manage_operations');
+@endphp
+
+@if (session('success'))
+    <div class="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3 mb-4">{{ session('success') }}</div>
+@endif
+@if (session('error'))
+    <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-4">{{ session('error') }}</div>
+@endif
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <div class="lg:col-span-2 space-y-5">
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-start justify-between gap-3 mb-5">
+                <div>
+                    <h2 class="text-lg font-black text-gray-800">{{ $operation->type->label() }}</h2>
+                    <p class="text-xs text-gray-500 mt-1">شماره عملیات: <span class="font-mono" dir="ltr">{{ $operation->operation_number }}</span></p>
+                </div>
+                <span class="text-[11px] border rounded-full px-3 py-1 {{ $badge }}">{{ $operation->state->label() }}</span>
+            </div>
+
+            <dl class="text-sm divide-y divide-gray-100">
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">شماره درخواست</dt>
+                    <dd class="font-mono text-xs text-gray-700" dir="ltr">{{ $operation->application?->application_number ?? '—' }}</dd>
+                </div>
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">مشتری</dt>
+                    <dd class="text-gray-700">{{ $operation->application?->user?->full_name ?? '—' }}</dd>
+                </div>
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">بازه رزرو</dt>
+                    <dd class="text-gray-700 text-xs">
+                        @if ($operation->reservation)
+                            {{ \App\Support\Rental\Jalali::formatLong($operation->reservation->start_date->toDateString()) }}
+                            تا
+                            {{ \App\Support\Rental\Jalali::formatLong($operation->reservation->end_date->toDateString()) }}
+                        @else — @endif
+                    </dd>
+                </div>
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">دستگاه</dt>
+                    <dd class="text-gray-700 text-xs">
+                        @if ($operation->device)
+                            <a href="{{ route('admin.devices.show', $operation->device) }}" class="text-brandBlue hover:underline">
+                                {{ $operation->device->product?->title_fa ?? '—' }}
+                            </a>
+                            {{-- Masked serial: the raw value stays on the device screen. --}}
+                            <span class="font-mono text-gray-400 mr-2" dir="ltr">{{ $operation->device->maskedSerial() }}</span>
+                        @else
+                            <span class="text-amber-600">هنوز تخصیص نیافته است</span>
+                        @endif
+                    </dd>
+                </div>
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">نوع مالکیت</dt>
+                    <dd class="text-gray-700 text-xs">{{ $operation->device?->ownership->label() ?? '—' }}</dd>
+                </div>
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">مالک</dt>
+                    <dd class="text-gray-700 text-xs">
+                        @if ($operation->owner)
+                            <a href="{{ route('admin.owners.show', $operation->owner) }}" class="text-brandBlue hover:underline">{{ $operation->owner->displayName() }}</a>
+                        @else
+                            گیم‌پک
+                        @endif
+                    </dd>
+                </div>
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">مسئول</dt>
+                    <dd class="text-gray-700 text-xs">{{ $operation->assignedTo?->full_name ?? '—' }}</dd>
+                </div>
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">زمان‌بندی</dt>
+                    <dd class="text-gray-700 text-xs" dir="ltr">{{ $operation->scheduled_at?->format('Y-m-d H:i') ?? '—' }}</dd>
+                </div>
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">آغاز</dt>
+                    <dd class="text-gray-700 text-xs" dir="ltr">{{ $operation->started_at?->format('Y-m-d H:i') ?? '—' }}</dd>
+                </div>
+                <div class="flex justify-between py-2.5">
+                    <dt class="text-gray-500">پایان</dt>
+                    <dd class="text-gray-700 text-xs" dir="ltr">{{ $operation->completed_at?->format('Y-m-d H:i') ?? '—' }}</dd>
+                </div>
+                @if ($operation->failure_reason)
+                    <div class="flex justify-between py-2.5">
+                        <dt class="text-gray-500">دلیل ناموفق بودن</dt>
+                        <dd class="text-red-600 text-xs">{{ $operation->failure_reason }}</dd>
+                    </div>
+                @endif
+            </dl>
+        </div>
+
+        {{-- Custody, shown separately from ownership on purpose: the two are
+             different facts and must never look like one. --}}
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 class="text-sm font-black text-gray-800 mb-4">تحویل فیزیکی</h3>
+
+            @if ($transfer)
+                <dl class="text-sm divide-y divide-gray-100">
+                    <div class="flex justify-between py-2.5">
+                        <dt class="text-gray-500">مسیر</dt>
+                        <dd class="text-gray-700 text-xs">{{ $transfer->transfer_type->label() }}</dd>
+                    </div>
+                    <div class="flex justify-between py-2.5">
+                        <dt class="text-gray-500">وضعیت</dt>
+                        <dd class="text-gray-700 text-xs">{{ $transfer->state->label() }}</dd>
+                    </div>
+                    <div class="flex justify-between py-2.5">
+                        <dt class="text-gray-500">درخواست</dt>
+                        <dd class="text-gray-700 text-xs" dir="ltr">{{ $transfer->initiated_at?->format('Y-m-d H:i') ?? '—' }}</dd>
+                    </div>
+                    <div class="flex justify-between py-2.5">
+                        <dt class="text-gray-500">تحویل گرفته شده</dt>
+                        <dd class="text-gray-700 text-xs" dir="ltr">{{ $transfer->transferred_at?->format('Y-m-d H:i') ?? '—' }}</dd>
+                    </div>
+                    <div class="flex justify-between py-2.5">
+                        <dt class="text-gray-500">تأیید مالک</dt>
+                        <dd class="text-gray-700 text-xs" dir="ltr">{{ $transfer->acknowledged_at?->format('Y-m-d H:i') ?? '—' }}</dd>
+                    </div>
+                    <div class="flex justify-between py-2.5">
+                        <dt class="text-gray-500">در اختیار</dt>
+                        <dd class="text-gray-700 text-xs">{{ $operation->device?->currentCustody()->label() ?? '—' }}</dd>
+                    </div>
+                </dl>
+
+                <p class="text-[11px] text-gray-400 mt-4 leading-6">
+                    تحویل فیزیکی مالکیت دستگاه را تغییر نمی‌دهد. دستگاه همچنان متعلق به مالک ثبت‌شده است.
+                    تأیید مالک صرفاً تأیید همین سابقه است و جایگزین امضا یا رسید قانونی نیست.
+                </p>
+
+                @if ($operation->device)
+                    <a href="{{ route('admin.devices.custody', $operation->device) }}"
+                       class="inline-block mt-3 text-xs text-brandBlue hover:underline">مشاهده سابقه کامل تحویل این دستگاه</a>
+                @endif
+            @else
+                <p class="text-sm text-gray-400">هنوز درخواست تحویلی برای این عملیات ثبت نشده است.</p>
+            @endif
+        </div>
+    </div>
+
+    <div class="space-y-5">
+        @if ($canManage && ! $operation->isTerminal())
+            @if (! $operation->hasDevice())
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <h3 class="text-sm font-black text-gray-800 mb-1">تخصیص دستگاه</h3>
+                    <p class="text-[11px] text-gray-400 mb-4 leading-6">
+                        انتخاب دستگاه به‌صورت خودکار انجام نمی‌شود. قاعده تخصیص هنوز تعیین نشده است و باید یک کارشناس دستگاه را انتخاب کند.
+                    </p>
+
+                    @if ($candidates->isEmpty())
+                        <p class="text-sm text-gray-400">دستگاه تأییدشده‌ای برای این مدل موجود نیست.</p>
+                    @else
+                        <form method="POST" action="{{ route('admin.operations.device', $operation) }}" class="space-y-3">
+                            @csrf
+                            <select name="device_id" required
+                                    class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
+                                <option value="">انتخاب کنید…</option>
+                                @foreach ($candidates as $candidate)
+                                    <option value="{{ $candidate->id }}">
+                                        {{ $candidate->maskedSerial() }} — {{ $candidate->ownerLabel() }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <button type="submit" class="w-full bg-brandBlue text-white rounded-xl px-4 py-2.5 text-sm font-bold">ثبت دستگاه</button>
+                        </form>
+                    @endif
+                </div>
+            @endif
+
+            @if ($operation->state === RentalOperationState::Scheduled)
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <h3 class="text-sm font-black text-gray-800 mb-4">زمان‌بندی</h3>
+                    <form method="POST" action="{{ route('admin.operations.schedule', $operation) }}" class="space-y-3">
+                        @csrf
+                        <input type="datetime-local" name="scheduled_at" dir="ltr"
+                               value="{{ $operation->scheduled_at?->format('Y-m-d\TH:i') }}"
+                               class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
+                        <button type="submit" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700">ثبت زمان</button>
+                    </form>
+                </div>
+            @endif
+
+            @if (in_array($operation->state, [RentalOperationState::Scheduled, RentalOperationState::Failed], true))
+                <form method="POST" action="{{ route('admin.operations.start', $operation) }}">
+                    @csrf
+                    <button type="submit" class="w-full bg-brandBlue text-white rounded-xl px-4 py-3 text-sm font-bold">آغاز عملیات و درخواست تحویل</button>
+                </form>
+            @endif
+
+            @if ($operation->state === RentalOperationState::InProgress)
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <h3 class="text-sm font-black text-gray-800 mb-1">ثبت تحویل گرفتن دستگاه</h3>
+                    <p class="text-[11px] text-gray-400 mb-4 leading-6">
+                        فقط زمانی ثبت کنید که دستگاه را عملاً تحویل گرفته‌اید. با این کار عملیات تکمیل می‌شود.
+                        بازرسی و تأیید وضعیت فیزیکی در این مرحله انجام نمی‌شود.
+                    </p>
+                    <form method="POST" action="{{ route('admin.operations.custody', $operation) }}" class="space-y-3">
+                        @csrf
+                        <textarea name="notes" rows="2" placeholder="یادداشت (اختیاری)"
+                                  class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue"></textarea>
+                        <button type="submit" data-confirm="تحویل گرفتن دستگاه ثبت شود؟"
+                                class="w-full bg-green-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold">ثبت تحویل</button>
+                    </form>
+                </div>
+
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <h3 class="text-sm font-black text-gray-800 mb-4">ثبت ناموفق بودن</h3>
+                    <form method="POST" action="{{ route('admin.operations.fail', $operation) }}" class="space-y-3">
+                        @csrf
+                        <input type="text" name="reason" required maxlength="500" placeholder="دلیل"
+                               class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
+                        <button type="submit" data-confirm="این عملیات ناموفق ثبت شود؟"
+                                class="w-full border border-red-200 text-red-600 rounded-xl px-4 py-2.5 text-sm font-bold">ثبت ناموفق</button>
+                    </form>
+                    <p class="text-[11px] text-gray-400 mt-3 leading-6">
+                        ثبت ناموفق بودن هیچ اقدام دیگری را فعال نمی‌کند: بازگشت وجه، جریمه مالک، جایگزینی دستگاه و لغو رزرو هنوز تعیین‌تکلیف نشده‌اند.
+                    </p>
+                </div>
+            @endif
+        @endif
+
+        @if ($operation->state === RentalOperationState::NotRequired)
+            <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 text-xs text-gray-600 leading-6">
+                دستگاه تخصیص‌یافته متعلق به گیم‌پک است، بنابراین تحویل گرفتن از مالک موضوعیت ندارد و سابقه تحویلی ثبت نمی‌شود.
+            </div>
+        @endif
+    </div>
+</div>
+@endsection

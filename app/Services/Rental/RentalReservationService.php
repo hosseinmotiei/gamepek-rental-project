@@ -30,7 +30,9 @@ use Illuminate\Support\Facades\DB;
  *  - materialiseAfterPayment() is the only writer of `rental_reservations`.
  *    It runs after the payment is server-verified, takes a lock, re-checks
  *    availability inside that lock, and writes a reservation already in the
- *    Paid state. That row is what blocks inventory.
+ *    Paid state. That row is what blocks inventory, and it is also where the
+ *    operational pickup task is opened -- in the same transaction, so the two
+ *    cannot disagree about whether a paid rental exists.
  *
  * Two things this deliberately does NOT do:
  *
@@ -47,6 +49,7 @@ class RentalReservationService
         private RentalPricingService $pricing,
         private RentalChainOrchestrator $orchestrator,
         private RentalAvailabilityService $availability,
+        private RentalOperationService $operations,
     ) {}
 
     /**
@@ -230,6 +233,16 @@ class RentalReservationService
                         'days' => $application->selected_days,
                     ],
                 );
+
+                // The operational task is opened in THIS transaction, so it can
+                // never exist for a reservation that failed to be written, and
+                // a payment that never settled produces neither. It is
+                // idempotent and backed by a unique index, so a replayed
+                // gateway callback still yields exactly one task.
+                //
+                // It is born without a device: allocation is undecided, and
+                // nothing here picks one.
+                $this->operations->openPickupForReservation($reservation);
 
                 return $reservation;
             });

@@ -83,6 +83,8 @@ class UserSeeder extends Seeder
             'view_audit_events', 'view_sms', 'refund_payments',
             // Owner / physical device fleet (mixed GamePek + third-party).
             'view_owners', 'view_devices', 'manage_devices',
+            // Physical operations: pickup tasks and custody records.
+            'view_operations', 'manage_operations',
         ];
         $permissions = [];
         foreach ($permissionNames as $name) {
@@ -107,6 +109,9 @@ class UserSeeder extends Seeder
             // Physical rental devices are inventory, so they sit with the
             // product manager rather than with the rental-chain reviewer.
             'view_owners', 'view_devices', 'manage_devices',
+            // Seeing where a console physically is, without driving the
+            // operation: running pickups is the order manager's job.
+            'view_operations',
         ]));
 
         $roles['order_manager']->syncPermissions($pick([
@@ -120,6 +125,9 @@ class UserSeeder extends Seeder
             'view_reports', 'view_sales_reports', 'view_order_reports', 'export_reports',
             'view_rental_applications', 'manage_rental_applications',
             'view_verifications', 'view_guarantees', 'view_contracts',
+            // Getting the physical device in hand is part of fulfilling a
+            // paid rental, so the pickup queue sits with the order manager.
+            'view_operations', 'manage_operations',
         ]));
 
         $roles['content_manager']->syncPermissions($pick([

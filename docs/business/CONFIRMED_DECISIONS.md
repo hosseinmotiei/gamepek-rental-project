@@ -127,6 +127,7 @@ this.**
 | C-12 / C-13 | Product → many serialised Device Units | **Implemented.** `devices` holds one row per physical console with a unique normalised serial; one product has many. `Device` IS the unit — no separate `device_units` table. Reservations still allocate at product level: `rental_reservations.device_id` exists but is always NULL, because the allocation rule is undecided |
 | C-14 / C-15 | Owner domain, mixed fleet | **Implemented.** `owners` (1:1 with `users`) plus `devices.ownership` = `gamepek` \| `owner`, bound by a CHECK constraint. GamePek stock needs no owner account. Owner registration, admin review (approve/reject) and ownership isolation are in place |
 | C-16 | Owner-chosen availability | **Not implemented.** Owner availability calendars are a later phase; availability still comes from reservations only |
+| C-17 | Device available again per operational state | **Partially implemented.** The operational domain now exists for one step only: a paid reservation opens an `owner_device_pickup` task in `rental_operations`, and `device_custody_transfers` records who physically holds the device. Inspection, delivery, customer return and owner return are NOT implemented, so a device never becomes available again through an operational path |
 | C-21 / C-22 | Admin-controlled multi-day discounts | Duration discount tiers exist in `config('rental.pricing.duration_discounts')` but are a **hardcoded placeholder**, not admin-editable and not owner-approved values |
 | C-23 | Selected game affects price | `RentalPricingService::quote()` accepts a `gameFee` parameter, but it is **always passed 0**; there is no game selection |
 | C-26 / C-27 / C-28 | 35/65 split, daily settlement | **No settlement, commission or payout code exists** |
@@ -162,13 +163,25 @@ the owner decides it, and several additionally require legal review.
   since nothing goes live on it: every device still needs admin approval
 - Which free device a paid reservation is allocated (prefer GamePek stock,
   rotate for owner fairness, favour condition?) — interacts with the 35/65
-  split and daily settlement
+  split and daily settlement. The operational task now makes this gate
+  **visible instead of silent**: a pickup sits in `awaiting_device_allocation`
+  until a human names a device, and no code path chooses one
+- What follows a **failed pickup**. Today the failure is recorded, audited and
+  shown to admin, and nothing else happens. Refund, owner penalty, replacement
+  device, reservation cancellation and owner suspension are all undecided
+- Whether a device already in GamePek custody may be released or re-picked-up
+  without a completed rental — no such transition exists
 - Device condition taxonomy — `devices.condition` is free text, no grades invented
 - Courier / delivery provider
 
 ### 4.2 Requires legal review
 
 - Exact legal effect of the **two-hour issue-report window**
+- Whether a **custody handover needs a receipt or a signature**. GamePek can
+  record taking physical possession of an owner's device, and the owner can
+  confirm that record (`custody.acknowledged`). That confirmation is expressly
+  **not** a signature, not legal acceptance, and not a statement about the
+  condition of the device. Nothing legal is claimed or generated
 - Final contract text
 - Cheque / promissory-note legal terms
 - Electronic-signature legal validity

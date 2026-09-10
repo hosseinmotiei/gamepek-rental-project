@@ -7,12 +7,14 @@ use App\Models\Device;
 use App\Models\Order;
 use App\Models\Owner;
 use App\Models\RentalApplication;
+use App\Models\RentalOperation;
 use App\Models\VerificationMedia;
 use App\Policies\AddressPolicy;
 use App\Policies\DevicePolicy;
 use App\Policies\OrderPolicy;
 use App\Policies\OwnerPolicy;
 use App\Policies\RentalApplicationPolicy;
+use App\Policies\RentalOperationPolicy;
 use App\Policies\VerificationMediaPolicy;
 use App\Services\Otp\OtpProviderInterface;
 use App\Services\Otp\Providers\MelipayamakOtpProvider;
@@ -32,6 +34,7 @@ class AppServiceProvider extends ServiceProvider
         Order::class => OrderPolicy::class,
         Owner::class => OwnerPolicy::class,
         RentalApplication::class => RentalApplicationPolicy::class,
+        RentalOperation::class => RentalOperationPolicy::class,
         VerificationMedia::class => VerificationMediaPolicy::class,
     ];
 

@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\DeviceController as AdminDeviceController;
 use App\Http\Controllers\Admin\HomeSectionController as AdminHomeSectionController;
 use App\Http\Controllers\Admin\MenuController as AdminMenuController;
 use App\Http\Controllers\Admin\MessageController as AdminMessageController;
+use App\Http\Controllers\Admin\OperationController as AdminOperationController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Admin\ProductController as AdminProductController;
@@ -35,6 +36,7 @@ use App\Http\Controllers\MessageController;
 use App\Http\Controllers\MockPaymentController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OwnerDeviceController;
+use App\Http\Controllers\OwnerOperationController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RentalApplicationController;
@@ -207,6 +209,13 @@ Route::middleware('auth')->group(function () {
         Route::post('/devices', [OwnerDeviceController::class, 'storeDevice'])->name('devices.store');
         Route::get('/devices/{device}', [OwnerDeviceController::class, 'show'])->name('devices.show');
         Route::post('/devices/{device}/disable', [OwnerDeviceController::class, 'disable'])->name('devices.disable');
+
+        // Pickups of this owner's own devices. Visibility plus one
+        // confirmation; the operation itself is driven from the admin side.
+        Route::get('/operations', [OwnerOperationController::class, 'index'])->name('operations.index');
+        Route::get('/operations/{operation}', [OwnerOperationController::class, 'show'])->name('operations.show');
+        Route::post('/operations/{operation}/acknowledge', [OwnerOperationController::class, 'acknowledgeCustody'])
+            ->name('operations.acknowledge');
     });
 });
 
@@ -443,6 +452,23 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::get('/{device}', [AdminDeviceController::class, 'show'])->name('show');
             Route::post('/{device}/approve', [AdminDeviceController::class, 'approve'])->name('approve');
             Route::post('/{device}/reject', [AdminDeviceController::class, 'reject'])->name('reject');
+            Route::get('/{device}/custody', [AdminOperationController::class, 'custodyHistory'])->name('custody');
+        });
+
+        // ──────────────────────────────────────────────────────────────────
+        // Physical operations: owner device pickup and custody.
+        //
+        // Pickup only. Inspection, delivery, customer return, owner return
+        // and settlement belong to later phases and have no routes here.
+        // ──────────────────────────────────────────────────────────────────
+        Route::prefix('operations')->name('operations.')->group(function () {
+            Route::get('/', [AdminOperationController::class, 'index'])->name('index');
+            Route::get('/{operation}', [AdminOperationController::class, 'show'])->name('show');
+            Route::post('/{operation}/device', [AdminOperationController::class, 'attachDevice'])->name('device');
+            Route::post('/{operation}/schedule', [AdminOperationController::class, 'schedule'])->name('schedule');
+            Route::post('/{operation}/start', [AdminOperationController::class, 'start'])->name('start');
+            Route::post('/{operation}/custody', [AdminOperationController::class, 'recordCustody'])->name('custody');
+            Route::post('/{operation}/fail', [AdminOperationController::class, 'fail'])->name('fail');
         });
 
         // ── Activity Logs ─────────────────────────────────────────────────────
