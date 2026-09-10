@@ -66,20 +66,32 @@ class DeviceCustodyService
             $device = $this->assertOwnerPickup($locked);
 
             try {
-                $transfer = DeviceCustodyTransfer::create([
-                    'device_id' => $device->id,
-                    'rental_operation_id' => $locked->id,
-                    'rental_reservation_id' => $locked->rental_reservation_id,
-                    'from_actor_type' => CustodyActor::Owner,
-                    'to_actor_type' => CustodyActor::GamePek,
-                    'from_owner_id' => $device->owner_id,
-                    // GamePek has no owner row by design.
-                    'to_owner_id' => null,
-                    'transfer_type' => CustodyTransferType::OwnerToGamePek,
-                    'state' => CustodyTransferState::Requested,
-                    'initiated_at' => now(),
-                    'initiated_by_user_id' => $actor->id,
-                ]);
+                // Assigned attribute-by-attribute, never mass-assigned: the
+                // model guards everything, so actors and state cannot arrive
+                // from request data even by accident.
+                $transfer = new DeviceCustodyTransfer;
+                $transfer->reference_number = DeviceCustodyTransfer::generateReference();
+                $transfer->device_id = $device->id;
+                $transfer->rental_operation_id = $locked->id;
+                $transfer->rental_reservation_id = $locked->rental_reservation_id;
+                $transfer->transfer_type = CustodyTransferType::OwnerToGamePek;
+
+                // Derived from the type, not chosen independently, so the pair
+                // cannot drift from what the type means. The CHECK constraint
+                // enforces the same thing at the database.
+                $transfer->from_actor_type = CustodyTransferType::OwnerToGamePek->source();
+                $transfer->to_actor_type = CustodyTransferType::OwnerToGamePek->destination();
+                $transfer->from_owner_id = $device->owner_id;
+                // GamePek has no owner row by design.
+                $transfer->to_owner_id = null;
+
+                $transfer->state = CustodyTransferState::Requested;
+                $transfer->initiated_at = now();
+                $transfer->initiated_by_user_id = $actor->id;
+
+                $this->assertActorsMatchType($transfer);
+
+                $transfer->save();
             } catch (QueryException $e) {
                 if ($this->isDuplicateTransfer($e)) {
                     return $locked->custodyTransfer()->firstOrFail();
@@ -128,6 +140,18 @@ class DeviceCustodyService
             if (! $transfer->state->canTransitionTo(CustodyTransferState::Transferred)) {
                 throw new \RuntimeException('وضعیت تحویل این دستگاه اجازه این تغییر را نمی‌دهد.');
             }
+
+            // The transfer and its operation must name the SAME console.
+            // attachDevice() refuses while a task is in progress, so this is
+            // not reachable through the normal flow -- it is asserted anyway
+            // because "not reachable today" is a fact about the current code,
+            // not an invariant, and a silent mismatch here would record the
+            // wrong device as having changed hands.
+            if ($transfer->device_id !== $locked->device_id) {
+                throw new \RuntimeException('دستگاه ثبت‌شده در سابقه تحویل با دستگاه این عملیات یکسان نیست.');
+            }
+
+            $this->assertActorsMatchType($transfer);
 
             $ownershipBefore = [$device->owner_id, $device->ownership->value];
 
@@ -178,6 +202,7 @@ class DeviceCustodyService
 
             $device = $locked->device()->firstOrFail();
             $ownershipBefore = [$device->owner_id, $device->ownership->value];
+            $custodyBefore = $device->currentCustody();
 
             $locked->state = CustodyTransferState::Acknowledged;
             $locked->acknowledged_at = now();
@@ -188,10 +213,46 @@ class DeviceCustodyService
 
             $this->assertOwnershipUnchanged($device, $ownershipBefore);
 
+            // Acknowledgement is a CONFIRMATION, not a second handover. It
+            // updates the state of the existing row rather than appending a new
+            // one, so possession must read exactly the same before and after.
+            // Asserted rather than assumed: if a future change ever made
+            // acknowledging move custody, that would be a device appearing to
+            // change hands twice for one physical event.
+            if ($device->fresh()->currentCustody() !== $custodyBefore) {
+                throw new \RuntimeException('تأیید مالک نباید وضعیت در اختیار بودن دستگاه را تغییر دهد.');
+            }
+
             $transfer->setRawAttributes($locked->getAttributes(), true);
 
             return $transfer;
         });
+    }
+
+    /**
+     * The declared transfer type and the actual actors must agree.
+     *
+     * A row claiming `owner_to_gamepek` while pointing customer -> owner would
+     * be a device silently changing hands. Checked before every write and
+     * enforced again by a CHECK constraint, because the service being the only
+     * writer is a fact about today's code rather than an invariant.
+     */
+    private function assertActorsMatchType(DeviceCustodyTransfer $transfer): void
+    {
+        if (! $transfer->actorsMatchType()) {
+            throw new \RuntimeException('طرفین ثبت‌شده برای این نوع انتقال تحویل معتبر نیستند.');
+        }
+
+        $ownerSideMissing = $transfer->from_actor_type === CustodyActor::Owner && $transfer->from_owner_id === null;
+        $ownerSideInvented = $transfer->from_actor_type !== CustodyActor::Owner && $transfer->from_owner_id !== null;
+        $toSideMissing = $transfer->to_actor_type === CustodyActor::Owner && $transfer->to_owner_id === null;
+        // GamePek deliberately has no owner row; naming one here would be
+        // inventing a fake owner account for first-party stock.
+        $toSideInvented = $transfer->to_actor_type !== CustodyActor::Owner && $transfer->to_owner_id !== null;
+
+        if ($ownerSideMissing || $ownerSideInvented || $toSideMissing || $toSideInvented) {
+            throw new \RuntimeException('ارجاع مالک در سابقه تحویل با طرفین انتقال هم‌خوان نیست.');
+        }
     }
 
     /**
@@ -256,6 +317,8 @@ class DeviceCustodyService
             resourceType: 'DeviceCustodyTransfer',
             resourceId: $transfer->id,
             context: [
+                // Operational handle only -- not a receipt, no legal effect.
+                'reference_number' => $transfer->reference_number,
                 'device_id' => $device->id,
                 // Never the raw serial -- a physical identifier stays masked in
                 // ordinary audit context, as with device.registered.

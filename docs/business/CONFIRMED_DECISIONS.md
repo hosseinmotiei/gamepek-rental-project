@@ -181,7 +181,11 @@ the owner decides it, and several additionally require legal review.
   record taking physical possession of an owner's device, and the owner can
   confirm that record (`custody.acknowledged`). That confirmation is expressly
   **not** a signature, not legal acceptance, and not a statement about the
-  condition of the device. Nothing legal is claimed or generated
+  condition of the device. Nothing legal is claimed or generated.
+  A handover does carry a `reference_number` (`CUS-…`), but that is an
+  **internal operational handle** for naming it on the phone and in the audit
+  trail — not a receipt, and nothing legal may be built on it until this gate
+  is decided
 - Final contract text
 - Cheque / promissory-note legal terms
 - Electronic-signature legal validity

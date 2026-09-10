@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use App\Http\Controllers\Controller;
+use App\Models\AuditEvent;
 use App\Models\Device;
 use App\Models\RentalOperation;
 use App\Services\Audit\AuditLogger;
 use App\Services\Rental\DeviceCustodyService;
+use App\Services\Rental\OperationCustodyReconciler;
 use App\Services\Rental\RentalOperationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -79,7 +81,41 @@ class OperationController extends Controller
                 ->get();
         }
 
-        return view('admin.operations.show', compact('operation', 'candidates'));
+        // The audit trail for this task and its handover, read from the
+        // existing audit_events table. No second audit mechanism is
+        // introduced; this is a view onto the one the project already has.
+        $auditEvents = AuditEvent::query()
+            ->where(function ($q) use ($operation) {
+                $q->where(fn ($q) => $q->where('resource_type', 'RentalOperation')
+                    ->where('resource_id', $operation->id));
+
+                if ($operation->custodyTransfer) {
+                    $q->orWhere(fn ($q) => $q->where('resource_type', 'DeviceCustodyTransfer')
+                        ->where('resource_id', $operation->custodyTransfer->id));
+                }
+            })
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        return view('admin.operations.show', compact('operation', 'candidates', 'auditEvents'));
+    }
+
+    /**
+     * Operations and custody records that contradict each other.
+     *
+     * READ-ONLY. Nothing here repairs anything: every plausible repair is an
+     * undecided business question, and guessing would destroy the evidence a
+     * human needs. See OperationCustodyReconciler.
+     */
+    public function reconciliation(Request $request, OperationCustodyReconciler $reconciler)
+    {
+        abort_if(! $request->user()->can('view_operations'), 403);
+
+        return view('admin.operations.reconciliation', [
+            'findings' => $reconciler->findings(),
+        ]);
     }
 
     /** Attach the physical device an operator chose. Nothing is auto-selected. */

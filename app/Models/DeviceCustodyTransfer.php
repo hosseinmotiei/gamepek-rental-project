@@ -7,6 +7,7 @@ use App\Enums\CustodyTransferState;
 use App\Enums\CustodyTransferType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 /**
  * One recorded handover of physical possession.
@@ -15,13 +16,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * has no method that could change it -- see DeviceCustodyService, which asserts
  * the same thing at the service boundary.
  *
- * Nothing here is fillable. Actors, type, state and timestamps are all written
- * by DeviceCustodyService; a request must not be able to name itself as the
- * source or destination of a custody transfer.
+ * NOTHING here is mass-assignable. `$guarded = ['*']` is deliberate and
+ * stronger than the usual `['id']`: actors, type, state, owner references and
+ * every timestamp are written attribute-by-attribute by DeviceCustodyService,
+ * so no request field can ever name itself as the source or destination of a
+ * custody transfer, or backdate a handover.
+ *
+ * This is the one place where a mass-assignment slip would be worst -- a
+ * writable `to_actor_type` is a device changing hands on a form post -- so the
+ * guard is set to refuse everything rather than to enumerate exceptions.
  */
 class DeviceCustodyTransfer extends Model
 {
-    protected $guarded = ['id'];
+    protected $guarded = ['*'];
 
     protected function casts(): array
     {
@@ -34,6 +41,24 @@ class DeviceCustodyTransfer extends Model
             'transferred_at' => 'datetime',
             'acknowledged_at' => 'datetime',
         ];
+    }
+
+    /**
+     * A stable, quotable handle for one handover: CUS-YYMMDD-XXXXXX.
+     *
+     * OPERATIONAL ONLY. This is NOT a receipt and NOT a legal document. It
+     * exists so a specific handover can be named unambiguously on the phone, in
+     * an audit trail and in a reconciliation report, the same way
+     * `rental_operations.operation_number` names a task.
+     *
+     * It asserts nothing about legal effect, acceptance, signatures or the
+     * condition of the device. Receipt and signature requirements are an open
+     * legal gate (docs/business/CONFIRMED_DECISIONS.md section 4.2) and must
+     * not be built on top of this without that decision.
+     */
+    public static function generateReference(): string
+    {
+        return 'CUS-'.now()->format('ymd').'-'.strtoupper(Str::random(6));
     }
 
     public function device(): BelongsTo
@@ -71,6 +96,19 @@ class DeviceCustodyTransfer extends Model
     public function holder(): ?CustodyActor
     {
         return $this->isPossessionMoved() ? $this->to_actor_type : null;
+    }
+
+    /**
+     * Is the actor pair the one this transfer type actually means?
+     *
+     * Asserted by the service before every write and enforced again by a CHECK
+     * constraint. A row claiming `owner_to_gamepek` while pointing customer ->
+     * owner would be a device silently changing hands.
+     */
+    public function actorsMatchType(): bool
+    {
+        return $this->from_actor_type === $this->transfer_type->source()
+            && $this->to_actor_type === $this->transfer_type->destination();
     }
 
     public function scopePossessionMoved($query)

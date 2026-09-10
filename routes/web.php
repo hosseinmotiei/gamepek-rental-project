@@ -463,6 +463,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // ──────────────────────────────────────────────────────────────────
         Route::prefix('operations')->name('operations.')->group(function () {
             Route::get('/', [AdminOperationController::class, 'index'])->name('index');
+            // Read-only drift report. Declared before the wildcard so
+            // "reconciliation" is never captured as an operation id.
+            Route::get('/reconciliation', [AdminOperationController::class, 'reconciliation'])->name('reconciliation');
             Route::get('/{operation}', [AdminOperationController::class, 'show'])->name('show');
             Route::post('/{operation}/device', [AdminOperationController::class, 'attachDevice'])->name('device');
             Route::post('/{operation}/schedule', [AdminOperationController::class, 'schedule'])->name('schedule');

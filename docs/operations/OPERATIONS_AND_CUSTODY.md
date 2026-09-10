@@ -142,15 +142,72 @@ are real future legs and are unimplemented.
 
 ---
 
-## 6. Concurrency and idempotency
+## 5b. The transfer reference — not a receipt
+
+Every custody transfer carries a `reference_number` shaped `CUS-YYMMDD-XXXXXX`,
+parallel to `rental_operations.operation_number`.
+
+It is an **internal operational handle** so a specific handover can be named on
+the phone, in the audit trail and in the reconciliation report. It asserts
+nothing about legal effect, acceptance, signatures, or the condition of the
+device.
+
+The business will eventually need real custody receipts for all four legs. Their
+legal structure is unspecified and requires legal review, so **do not build
+receipt semantics on top of this field** until that gate is decided.
+
+---
+
+## 6. Concurrency, idempotency and database invariants
 
 - `unique(rental_reservation_id, type)` on `rental_operations` — one pickup per
   reservation, forever.
 - `unique(rental_operation_id)` on `device_custody_transfers` — one handover per
   task.
+- `unique(reference_number)` — one handle per handover.
 - Every transition locks its row with `lockForUpdate()` first. Two operators
   pressing "received" at once produce exactly one custody record; the loser gets
   a safe Persian conflict message.
+
+CHECK constraints, because the service being the only writer is a fact about
+today's code rather than an invariant:
+
+| Constraint | Refuses |
+|---|---|
+| `rental_operations_completed_device_ck` | a completed operation with no device |
+| `device_custody_transferred_at_ck` | possession moved with no timestamp |
+| `device_custody_acknowledged_at_ck` | an acknowledgement with no timestamp |
+| `device_custody_actor_pair_ck` | `owner_to_gamepek` pointing anywhere but owner → gamepek |
+| `device_custody_owner_ref_ck` | an owner side naming no owner, or a GamePek/customer side naming one |
+
+The last one also blocks inventing a fake owner account for GamePek stock
+through the custody table.
+
+The operation-and-transfer device agreement spans two tables, which a CHECK
+cannot express in MariaDB. It is asserted in `DeviceCustodyService` and detected
+after the fact by the reconciler below. A trigger was considered and rejected: a
+hidden write-path side effect is harder to reason about than an explicit
+assertion plus a report an operator can read.
+
+---
+
+## 6b. Reconciliation
+
+`OperationCustodyReconciler` reports operations and custody records that have
+drifted into contradiction: a completion with no handover, a completion whose
+device is not in GamePek custody, an operation and transfer naming different
+consoles, a handover whose operation never closed, an actor pair that
+contradicts its type.
+
+Every one of those is something the write path already prevents. That is exactly
+why the report is worth having — records reach that state through the paths no
+service controls: a console command, an import, a hand-run UPDATE during an
+incident, a future bug, or rows written before a guard existed.
+
+**It is read-only and repairs nothing.** Every plausible repair is an undecided
+business question, and guessing would destroy the evidence that makes the
+contradiction fixable by a human. Admin reads it at
+`/admin/operations/reconciliation` under `view_operations`.
 
 ---
 
@@ -196,7 +253,10 @@ belonging to another owner.
 - Guarantee, deposit, refund, cancellation, settlement, wallet
 - Owner penalties of any kind
 - SMS on any operational event
-- Receipts, documents or signatures for a handover
+- Receipts, documents or signatures for a handover. `reference_number` is an
+  internal handle and is **not** a receipt (§5b)
+- Automatic repair of any contradiction the reconciler reports (§6b)
+- Releasing a device from GamePek custody
 
 ## 10. Open gates relevant to this domain
 

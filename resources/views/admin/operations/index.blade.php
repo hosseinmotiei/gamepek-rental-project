@@ -21,6 +21,7 @@
 <div class="mb-5">
     <h1 class="text-lg font-black text-gray-800">عملیات فیزیکی</h1>
     <p class="text-xs text-gray-500 mt-1">تحویل گرفتن دستگاه از مالک. بازرسی، ارسال و بازگشت در مرحله‌های بعدی اضافه می‌شوند.</p>
+    <a href="{{ route('admin.operations.reconciliation') }}" class="inline-block mt-2 text-xs text-brandBlue hover:underline">بررسی مغایرت‌های عملیات و تحویل</a>
 </div>
 
 <form method="GET" class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-col md:flex-row gap-3">

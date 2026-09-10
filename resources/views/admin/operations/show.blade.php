@@ -121,6 +121,12 @@
             @if ($transfer)
                 <dl class="text-sm divide-y divide-gray-100">
                     <div class="flex justify-between py-2.5">
+                        <dt class="text-gray-500">شناسه تحویل</dt>
+                        {{-- Internal operational handle. NOT a receipt number
+                             and with no legal effect -- see CustodyTransferState. --}}
+                        <dd class="font-mono text-xs text-gray-700" dir="ltr">{{ $transfer->reference_number }}</dd>
+                    </div>
+                    <div class="flex justify-between py-2.5">
                         <dt class="text-gray-500">مسیر</dt>
                         <dd class="text-gray-700 text-xs">{{ $transfer->transfer_type->label() }}</dd>
                     </div>
@@ -157,6 +163,33 @@
                 @endif
             @else
                 <p class="text-sm text-gray-400">هنوز درخواست تحویلی برای این عملیات ثبت نشده است.</p>
+            @endif
+        </div>
+
+        {{-- Audit history for this task and its handover, read from the
+             existing audit_events table. No second audit mechanism. --}}
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 class="text-sm font-black text-gray-800 mb-4">سابقه رویدادها</h3>
+
+            @if ($auditEvents->isEmpty())
+                <p class="text-sm text-gray-400">رویدادی ثبت نشده است.</p>
+            @else
+                <ol class="text-sm divide-y divide-gray-100">
+                    @foreach ($auditEvents as $event)
+                        <li class="py-2.5 flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-gray-700 text-xs font-mono" dir="ltr">{{ $event->action }}</p>
+                                <p class="text-[11px] text-gray-400 mt-1">
+                                    {{ $event->actor_label ?? 'سیستم' }}
+                                    @if ($event->result !== 'success')
+                                        <span class="text-red-600">· {{ $event->result }}</span>
+                                    @endif
+                                </p>
+                            </div>
+                            <span class="text-[11px] text-gray-400 shrink-0" dir="ltr">{{ $event->occurred_at?->format('Y-m-d H:i') }}</span>
+                        </li>
+                    @endforeach
+                </ol>
             @endif
         </div>
     </div>
