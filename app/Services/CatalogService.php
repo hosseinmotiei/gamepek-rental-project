@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Category;
 use App\Models\HomeSection;
 use App\Models\Product;
+use App\Services\Rental\RentalAvailabilityService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -77,11 +78,12 @@ class CatalogService
             $from = $filters['rental_from'];
             $to = $filters['rental_to'];
 
-            $query->whereNotNull('attributes->_rental')
-                ->whereDoesntHave('rentalReservations', fn ($q) => $q
-                    ->blocking()
-                    ->where('start_date', '<=', $to)
-                    ->where('end_date', '>=', $from));
+            $query->whereNotNull('attributes->_rental');
+
+            // Routed through the single availability authority so the listing
+            // and the product page's calendar can never disagree -- they used
+            // to, because the calendar read a static JSON blob instead.
+            app(RentalAvailabilityService::class)->constrainProductQuery($query, $from, $to);
         }
 
         $this->applyAttributeFacets($query, $filters['attributes'] ?? []);

@@ -6,6 +6,7 @@ use App\Models\Banner;
 use App\Models\Category;
 use App\Models\Product;
 use App\Services\CatalogService;
+use App\Services\Rental\RentalAvailabilityService;
 use App\Services\RentalPricingService;
 use App\Support\Rental\RentalCalendar;
 use App\Support\Rental\RentalItem;
@@ -86,7 +87,11 @@ class ProductController extends Controller
         $rentalQuote = null;
 
         if ($rental) {
-            $blocked = $rental->blocked();
+            // C-18: real reservations, not the static `_rental.blocked` blob.
+            // The blob was seeder fixture data and disagreed with search in
+            // both directions -- showing free dates as reserved and paid dates
+            // as free. Same service the search filter uses.
+            $blocked = app(RentalAvailabilityService::class)->blockedRangesFor($product->id);
             $rentalCalendar = RentalCalendar::build($blocked);
 
             // The default duration the panel opens on. Kept in sync with the

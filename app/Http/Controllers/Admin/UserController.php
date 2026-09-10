@@ -41,7 +41,13 @@ class UserController extends Controller
         abort_if(! auth()->user()->can('view_users'), 403);
 
         $user->load(['addresses', 'roles']);
-        $user->loadCount(['orders', 'wishlists', 'reviews', 'questions']);
+
+        // `wishlists`, `reviews` and `questions` are Store features that were
+        // pruned from Rental -- the relations do not exist on User, so counting
+        // them threw BadMethodCallException and this page returned 500 for
+        // every user. Replaced with relations Rental actually has; the Store
+        // features are deliberately NOT reintroduced.
+        $user->loadCount(['orders', 'rentalApplications', 'conversations']);
 
         $orders = collect();
         if (auth()->user()->can('view_user_orders')) {

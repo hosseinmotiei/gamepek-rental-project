@@ -192,7 +192,11 @@ class HomeSearchFlowTest extends TestCase
             'start_date' => $from, 'end_date' => $to, 'days' => 3,
             'daily_rate' => 1, 'subtotal' => 1, 'discount' => 0, 'delivery_fee' => 0,
             'rental_total' => 1, 'deposit_amount' => 0, 'payable_now' => 1, 'quote' => [],
-            'state' => 'held',
+
+            // C-16: `held` no longer blocks inventory -- there is no unpaid
+            // hold. Only a paid (or active) reservation takes a device off the
+            // market, so that is what a blocking fixture must be.
+            'state' => 'paid',
         ]);
     }
 }

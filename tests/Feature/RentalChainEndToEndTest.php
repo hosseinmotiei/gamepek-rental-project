@@ -7,6 +7,8 @@ use App\Enums\ContractState;
 use App\Enums\GuaranteeState;
 use App\Enums\IdentityState;
 use App\Enums\RentalApplicationState;
+use App\Enums\ReservationState;
+use App\Exceptions\ReservationConflictException;
 use App\Models\AuditEvent;
 use App\Models\Contract;
 use App\Models\ContractSignature;
@@ -14,6 +16,7 @@ use App\Models\ContractTemplate;
 use App\Models\Guarantee;
 use App\Models\GuaranteeInquiry;
 use App\Models\RentalApplicationTransition;
+use App\Models\RentalReservation;
 use App\Models\User;
 use App\Models\VerificationMedia;
 use App\Services\Banking\BankAccountService;
@@ -129,22 +132,30 @@ class RentalChainEndToEndTest extends TestCase
         // The whole point: nothing verification-related on the web-served disk.
         $this->assertEmpty(Storage::disk('public')->allFiles());
 
-        // ── 4. Reservation ───────────────────────────────────────────────
+        // ── 4. Selection (NOT a reservation) ─────────────────────────────
+        // C-15/C-16: choosing a device and dates reserves nothing and blocks
+        // no inventory. The reservation appears only after payment clears.
         $reservations = app(RentalReservationService::class);
         $product = $this->makeRentableProduct();
 
+        // Identity and bank were verified in steps 1-2, which is exactly what
+        // the payment gate now requires before a selection can advance.
+        $this->user->load(['identity', 'bankAccounts']);
+
         $application = $reservations->openApplication($this->user);
-        $reservation = $reservations->reserve($application, $product, now()->addDay()->toDateString(), 5);
+        $reservations->recordSelection($application, $product, now()->addDay()->toDateString(), 5);
 
         $application->refresh();
         $this->assertSame(RentalApplicationState::ReservationHeld, $application->state);
+        $this->assertNull($application->reservation, 'selection must not create a reservation');
+        $this->assertSame(0, RentalReservation::count());
 
         // Server-computed price, never taken from the client.
-        $this->assertSame(500_000, $reservation->daily_rate);
-        $this->assertGreaterThan(0, $reservation->payable_now);
+        $quote = (array) $application->quote;
+        $this->assertSame(500_000, $quote['daily_rate']);
+        $this->assertGreaterThan(0, $quote['payable_now']);
         // The deposit is a hold, not a charge.
-        $this->assertSame(3_000_000, $reservation->deposit_amount);
-        $this->assertNotSame($reservation->payable_now, $reservation->payable_now + $reservation->deposit_amount);
+        $this->assertSame(3_000_000, $quote['deposit']);
 
         // ── 5. Payment ───────────────────────────────────────────────────
         $this->actingAs($this->user);
@@ -244,7 +255,10 @@ class RentalChainEndToEndTest extends TestCase
             'identity.submitted', 'identity.verified',
             'bank_account.ownership_verified',
             'media.uploaded',
-            'reservation.held',
+            // Selection and reservation are now two distinct, separately
+            // audited events -- the choice, then the post-payment booking.
+            'rental_application.selection_recorded',
+            'reservation.created',
             'payment.request', 'payment.verified', 'order.paid',
             'guarantee.submitted', 'guarantee.verified',
             'contract.generated', 'contract.accepted', 'contract.signed',
@@ -359,22 +373,32 @@ class RentalChainEndToEndTest extends TestCase
         $template->update(['body' => 'متن جایگزین']);
     }
 
-    public function test_an_overlapping_reservation_is_rejected(): void
+    public function test_an_overlapping_selection_is_rejected_against_a_paid_reservation(): void
     {
         $reservations = app(RentalReservationService::class);
         $product = $this->makeRentableProduct();
-        $start = now()->addDays(3)->toDateString();
+        $start = now()->addDays(3);
 
-        $first = $reservations->openApplication($this->user);
-        $reservations->reserve($first, $product, $start, 4);
+        // Only a PAID reservation blocks inventory now (C-16), so the blocker
+        // is written in that state -- an unpaid hold would no longer block.
+        $blocker = $reservations->openApplication($this->user);
+
+        RentalReservation::create([
+            'rental_application_id' => $blocker->id,
+            'product_id' => $product->id,
+            'start_date' => $start->toDateString(),
+            'end_date' => $start->copy()->addDays(3)->toDateString(),
+            'days' => 4,
+            'state' => ReservationState::Paid,
+        ]);
 
         $other = User::create(['full_name' => 'کاربر دوم', 'mobile' => '09121114455', 'status' => 'active']);
         $second = $reservations->openApplication($other);
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(ReservationConflictException::class);
         $this->expectExceptionMessage('این دستگاه در بازه انتخابی شما رزرو شده است');
 
-        $reservations->reserve($second, $product, now()->addDays(5)->toDateString(), 3);
+        $reservations->recordSelection($second, $product, now()->addDays(5)->toDateString(), 3);
     }
 
     public function test_verification_media_is_not_reachable_without_a_valid_signature(): void

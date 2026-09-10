@@ -92,7 +92,11 @@ class RentalApplicationController extends Controller
         try {
             // Note what is NOT read from the request: any price. The quote is
             // computed server-side by RentalPricingService.
-            $reservation = $this->reservations->reserve(
+            //
+            // This records the choice only. It creates no reservation and
+            // blocks no inventory -- C-15/C-16 put the reservation strictly
+            // after a verified payment.
+            $application = $this->reservations->recordSelection(
                 $application,
                 $product,
                 $data['start_date'],
@@ -103,10 +107,11 @@ class RentalApplicationController extends Controller
             return $this->fail($request, $e->getMessage(), 422);
         }
 
-        return $this->ok($request, 'رزرو ثبت شد.', [
-            'reservation_id' => $reservation->id,
-            'payable_now' => $reservation->payable_now,
-            'deposit' => $reservation->deposit_amount,
+        $quote = (array) $application->quote;
+
+        return $this->ok($request, 'انتخاب شما ثبت شد.', [
+            'payable_now' => $quote['payable_now'] ?? 0,
+            'deposit' => $quote['deposit'] ?? 0,
             'state' => $application->refresh()->state->value,
         ]);
     }
@@ -123,10 +128,13 @@ class RentalApplicationController extends Controller
     {
         $this->authorize('update', $application);
 
-        $application->loadMissing(['reservation', 'order']);
+        $application->loadMissing(['order', 'user.identity', 'user.bankAccounts']);
 
-        if (! $application->reservation) {
-            return $this->fail($request, 'ابتدا باید یک رزرو ثبت کنید.', 422);
+        // THE PAYMENT GATE (C-13/C-14). Server-side and authoritative: the UI
+        // hiding the button is a convenience, this is the control. A direct
+        // POST from a client that skipped verification lands here and stops.
+        if ($reason = $this->orchestrator->paymentBlockedReason($application)) {
+            return $this->fail($request, $this->paymentBlockedMessage($reason), 422);
         }
 
         $order = DB::transaction(function () use ($application) {
@@ -136,16 +144,18 @@ class RentalApplicationController extends Controller
                 return Order::find($locked->order_id);
             }
 
-            $reservation = $locked->reservation;
+            // The quote snapshotted at selection is what is charged. It was
+            // computed server-side and has never been through the browser.
+            $quote = (array) $locked->quote;
 
             $order = Order::create([
                 'order_number' => 'RNT-'.now()->format('Ymd').'-'.strtoupper(Str::random(6)),
                 'user_id' => $locked->user_id,
                 'status' => 'pending_payment',
                 'payment_status' => 'unpaid',
-                'subtotal' => $reservation->rental_total,
-                'shipping_cost' => $reservation->delivery_fee,
-                'total' => $reservation->payable_now,
+                'subtotal' => $quote['rental_total'] ?? 0,
+                'shipping_cost' => $quote['delivery_fee'] ?? 0,
+                'total' => $quote['payable_now'] ?? 0,
             ]);
 
             $locked->update(['order_id' => $order->id]);
@@ -341,6 +351,26 @@ class RentalApplicationController extends Controller
             'signature_id' => $signature->id,
             'state' => $application->refresh()->state->value,
         ]);
+    }
+
+    /**
+     * Turns the gate's internal reason key into a clear Persian message.
+     *
+     * The key itself never reaches the customer: it names internal states and
+     * would leak the shape of the chain. Each message says what the customer
+     * must do next, not what the system checked.
+     */
+    private function paymentBlockedMessage(string $reason): string
+    {
+        return match ($reason) {
+            'identity_missing',
+            'identity_not_verified' => 'برای پرداخت، ابتدا باید احراز هویت شما تکمیل و تأیید شود.',
+            'bank_missing',
+            'bank_not_verified' => 'برای پرداخت، ابتدا باید حساب بانکی شما ثبت و تأیید شود.',
+            'selection_missing' => 'ابتدا دستگاه و بازه اجاره را انتخاب کنید.',
+            'application_closed' => 'این درخواست بسته شده است و امکان پرداخت ندارد.',
+            default => 'در حال حاضر امکان پرداخت برای این درخواست وجود ندارد.',
+        };
     }
 
     private function ok(Request $request, string $message, array $payload = [])

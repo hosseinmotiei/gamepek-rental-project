@@ -58,11 +58,25 @@ class RentalReservation extends Model
             ->where('end_date', '>=', $startDate);
     }
 
+    /**
+     * The reservation states that actually block inventory.
+     *
+     * Confirmed business rule C-16: there is no unpaid reservation hold.
+     * `held` and `awaiting_payment` are therefore NOT blocking states -- an
+     * unpaid application must never take a device off the market.
+     *
+     * Under the current flow no reservation is created before payment at all
+     * (see RentalReservationService), so `held` and `awaiting_payment` can only
+     * appear on legacy rows written before that rule was implemented. Those
+     * rows are deliberately left in place, and by being excluded here they stop
+     * blocking without any data being rewritten.
+     *
+     * The enum cases are retained for backward compatibility with those rows
+     * and with the transition ledger; they are simply never produced any more.
+     */
     public function scopeBlocking($query)
     {
         return $query->whereIn('state', [
-            ReservationState::Held->value,
-            ReservationState::AwaitingPayment->value,
             ReservationState::Paid->value,
             ReservationState::Active->value,
         ]);

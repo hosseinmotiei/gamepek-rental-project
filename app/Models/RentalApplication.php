@@ -28,6 +28,13 @@ class RentalApplication extends Model
         'application_number', 'user_id', 'order_id', 'correlation_id',
         'submitted_at', 'approved_at', 'rejected_at', 'cancelled_at',
         'rejection_reason', 'admin_note',
+
+        // The customer's choice, held here rather than in a reservation row.
+        // C-15/C-16: no reservation exists until payment clears, so there is
+        // nowhere else for it to live between selection and payment.
+        // `quote` is a server-computed snapshot; it is never taken from input.
+        'product_id', 'selected_start_date', 'selected_end_date',
+        'selected_days', 'selected_extra_controller', 'quote',
     ];
 
     protected function casts(): array
@@ -38,7 +45,26 @@ class RentalApplication extends Model
             'approved_at' => 'datetime',
             'rejected_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'selected_start_date' => 'date',
+            'selected_end_date' => 'date',
+            'selected_days' => 'integer',
+            'selected_extra_controller' => 'boolean',
+            'quote' => 'array',
         ];
+    }
+
+    /**
+     * Has the customer chosen a product and a date range?
+     *
+     * Holds nothing and blocks no inventory -- it is the answer to "is there
+     * something to pay for", not "is anything reserved".
+     */
+    public function hasSelection(): bool
+    {
+        return $this->product_id !== null
+            && $this->selected_start_date !== null
+            && $this->selected_end_date !== null
+            && $this->selected_days !== null;
     }
 
     /**
@@ -64,6 +90,12 @@ class RentalApplication extends Model
     public function reservation(): HasOne
     {
         return $this->hasOne(RentalReservation::class);
+    }
+
+    /** The selected product. Null until the customer chooses one. */
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
     }
 
     public function guarantee(): HasOne

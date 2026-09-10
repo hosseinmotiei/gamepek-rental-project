@@ -170,6 +170,20 @@ class RentalItem
      *
      * @return list<BlockedRange>
      */
+    /**
+     * Blocked ranges declared in the product's `_rental` blob.
+     *
+     * NOT A SOURCE OF LIVE AVAILABILITY. Confirmed business rule C-18 makes
+     * `rental_reservations` the only authority; ask
+     * App\Services\Rental\RentalAvailabilityService instead.
+     *
+     * This blob is seeder/fixture data. While the product page rendered its
+     * calendar from here, the page and the search results contradicted each
+     * other in both directions -- free dates shown as reserved, and paid dates
+     * shown as free. Nothing in the live availability path calls this any more.
+     *
+     * @return list<BlockedRange>
+     */
     public function blocked(): array
     {
         $out = [];

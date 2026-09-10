@@ -3,11 +3,14 @@
 namespace App\Services;
 
 use App\Enums\PaymentVerificationState;
+use App\Exceptions\ReservationConflictException;
 use App\Models\Order;
 use App\Models\PaymentTransaction;
+use App\Models\RentalApplication;
 use App\Services\Audit\AuditLogger;
 use App\Services\Payment\Contracts\PaymentGatewayInterface;
 use App\Services\Payment\GatewayRegistry;
+use App\Services\Rental\RentalReservationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -251,6 +254,49 @@ class PaymentService
     // ──────────────────────────────────────────────────────────────────────
 
     private function settle(PaymentTransaction $transaction, PaymentGatewayInterface $adapter, array $params): array
+    {
+        $result = $this->settleInTransaction($transaction, $adapter, $params);
+
+        // C-15: a rental reservation is created only once the payment is
+        // verified -- and only AFTER the settlement transaction has committed.
+        //
+        // Deliberately outside that transaction: a date-range conflict must
+        // never roll back a payment that the gateway has already taken. The
+        // call is idempotent, so a replayed callback (which returns early
+        // above) and reconciliation both land here safely.
+        if (($result['success'] ?? false) && ($result['order'] ?? null) !== null) {
+            $this->materialiseRentalReservation($result['order']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Creates the reservation for a rental order whose payment just cleared.
+     *
+     * Failure is contained: the payment stays recorded and verified. A conflict
+     * is already audited by RentalReservationService, and the application is
+     * simply left without a reservation for operations to reconcile -- no
+     * refund is issued, because no refund rule has been decided.
+     */
+    private function materialiseRentalReservation(Order $order): void
+    {
+        $application = RentalApplication::where('order_id', $order->id)->first();
+
+        if (! $application) {
+            return;
+        }
+
+        try {
+            app(RentalReservationService::class)->materialiseAfterPayment($application);
+        } catch (ReservationConflictException) {
+            // Already audited as `reservation.conflict`.
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function settleInTransaction(PaymentTransaction $transaction, PaymentGatewayInterface $adapter, array $params): array
     {
         return DB::transaction(function () use ($transaction, $adapter, $params) {
             $locked = PaymentTransaction::where('id', $transaction->id)->lockForUpdate()->first();

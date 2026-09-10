@@ -157,8 +157,22 @@ class CheckoutController extends Controller
                 : null;
 
             if ($rentalApplication) {
+                // C-15: the reservation was created by PaymentService once the
+                // gateway result was independently verified -- under a product
+                // lock, with availability re-checked inside it, idempotently.
+                // Nothing is created here; this only reports the outcome.
                 app(RentalChainOrchestrator::class)
                     ->advance($rentalApplication, 'payment verified');
+
+                if ($rentalApplication->fresh()->reservation === null) {
+                    // The payment is real and stays recorded. No automatic
+                    // refund is issued: no refund rule has been decided (policy
+                    // gate), and inventing one would move real money on a guess.
+                    // The conflict is already audited; operations reconcile it.
+                    return redirect()
+                        ->route('rental.applications.show', $rentalApplication)
+                        ->with('error', 'پرداخت شما انجام شد، اما ثبت نهایی رزرو در این بازه ممکن نشد. تیم پشتیبانی درخواست شما را بررسی می‌کند.');
+                }
 
                 return redirect()
                     ->route('rental.applications.show', $rentalApplication)

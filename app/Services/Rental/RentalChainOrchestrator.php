@@ -6,7 +6,6 @@ use App\Enums\ContractState;
 use App\Enums\GuaranteeState;
 use App\Enums\IdentityState;
 use App\Enums\RentalApplicationState;
-use App\Enums\ReservationState;
 use App\Models\RentalApplication;
 use App\Models\RentalApplicationTransition;
 use App\Models\User;
@@ -70,10 +69,70 @@ class RentalChainOrchestrator
     }
 
     /**
+     * Are every mandatory prerequisite for taking money satisfied?
+     *
+     * The server-side payment gate. Confirmed business rules C-13 and C-14: KYC
+     * must be complete BEFORE payment, and the customer must not be able to pay
+     * before it. Previously nothing enforced ordering -- the ladder returned
+     * the highest rung whose facts held, so an application with no identity
+     * record at all could reach Paid.
+     *
+     * Bank verification is included because it is a mandatory rung of the
+     * existing pre-payment chain (BankPending -> BankVerified sits between
+     * identity and payment). It is not optional.
+     *
+     * Returns the blocking reason key, or null when payment may proceed.
+     * Callers map the key to a Persian message; the key itself is internal and
+     * must not be shown to a customer.
+     */
+    public function paymentBlockedReason(RentalApplication $application): ?string
+    {
+        if ($application->state->isTerminal()) {
+            return 'application_closed';
+        }
+
+        $identity = $application->user?->identity;
+
+        if ($identity === null) {
+            return 'identity_missing';
+        }
+
+        if ($identity->state !== IdentityState::Verified) {
+            return 'identity_not_verified';
+        }
+
+        $bankAccounts = $application->user?->bankAccounts;
+
+        if ($bankAccounts === null || $bankAccounts->isEmpty()) {
+            return 'bank_missing';
+        }
+
+        if (! $bankAccounts->contains(fn ($account) => $account->isVerified())) {
+            return 'bank_not_verified';
+        }
+
+        if (! $application->hasSelection()) {
+            return 'selection_missing';
+        }
+
+        return null;
+    }
+
+    public function canProceedToPayment(RentalApplication $application): bool
+    {
+        return $this->paymentBlockedReason($application) === null;
+    }
+
+    /**
      * Pure predicate ladder -- no side effects, unit-testable without a
-     * database. Walks from the top and returns the highest state whose facts
-     * hold; because it reads only persisted child state, a re-run after a
+     * database. Because it reads only persisted child state, a re-run after a
      * crash lands on the same answer.
+     *
+     * ORDERED, not merely "highest true rung". Each rung carries the
+     * prerequisites of every rung below it, so a later fact cannot promote an
+     * application past a step it never completed. That was the defect behind
+     * the payment gate: an order row alone was enough to derive PaymentPending
+     * regardless of identity.
      */
     public function nextState(RentalApplication $application): RentalApplicationState
     {
@@ -86,17 +145,26 @@ class RentalChainOrchestrator
         }
 
         $identity = $application->user?->identity;
-        $reservation = $application->reservation;
         $order = $application->order;
         $guarantee = $application->guarantee;
         $contract = $application->contract;
 
-        $bankVerified = $application->user?->bankAccounts
-            ?->contains(fn ($account) => $account->isVerified()) ?? false;
+        $identityVerified = $identity?->state === IdentityState::Verified;
 
         $bankAny = ($application->user?->bankAccounts?->isNotEmpty()) ?? false;
 
-        $paid = $order?->payment_status === 'paid';
+        $bankVerified = $application->user?->bankAccounts
+            ?->contains(fn ($account) => $account->isVerified()) ?? false;
+
+        // Everything from the selection rung upwards requires a complete KYC
+        // chain (C-13/C-14). This single flag is what makes the ladder ordered.
+        $kycComplete = $identityVerified && $bankVerified;
+
+        // C-15/C-16: the customer's choice lives on the application, not in a
+        // reservation row. No reservation exists before payment clears.
+        $hasSelection = $kycComplete && $application->hasSelection();
+
+        $paid = $hasSelection && $order?->payment_status === 'paid';
 
         // Every contract rung sits above the guarantee, so a contract row only
         // counts once the guarantee it secures is actually verified. Without
@@ -135,26 +203,29 @@ class RentalChainOrchestrator
             return RentalApplicationState::Paid;
         }
 
-        if ($order !== null) {
+        if ($hasSelection && $order !== null) {
             return RentalApplicationState::PaymentPending;
         }
 
-        if ($reservation !== null && in_array($reservation->state, [
-            ReservationState::Held,
-            ReservationState::AwaitingPayment,
-        ], true)) {
+        // Legacy name, current meaning: the customer has chosen a product and a
+        // date range and every payment prerequisite is satisfied. NOTHING is
+        // held -- no reservation row exists and no inventory is blocked
+        // (C-16). The enum case keeps its stored value `reservation_held` so
+        // historical rows and transition ledgers stay readable; renaming it
+        // would rewrite decided history for no behavioural gain.
+        if ($hasSelection) {
             return RentalApplicationState::ReservationHeld;
         }
 
-        if ($bankVerified) {
+        if ($identityVerified && $bankVerified) {
             return RentalApplicationState::BankVerified;
         }
 
-        if ($bankAny) {
+        if ($identityVerified && $bankAny) {
             return RentalApplicationState::BankPending;
         }
 
-        if ($identity?->state === IdentityState::Verified) {
+        if ($identityVerified) {
             return RentalApplicationState::IdentityVerified;
         }
 

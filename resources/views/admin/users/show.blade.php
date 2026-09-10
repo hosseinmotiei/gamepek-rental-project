@@ -204,12 +204,12 @@ $statusLabels = [
                     <p class="text-[10px] text-gray-500 mt-0.5">ت خرید</p>
                 </div>
                 <div class="bg-yellow-50 rounded-xl p-3 text-center">
-                    <p class="text-xl font-black text-yellow-600">{{ $user->wishlists_count }}</p>
-                    <p class="text-[10px] text-gray-500 mt-0.5">علاقه‌مندی</p>
+                    <p class="text-xl font-black text-yellow-600">{{ persian_number($user->rental_applications_count) }}</p>
+                    <p class="text-[10px] text-gray-500 mt-0.5">درخواست اجاره</p>
                 </div>
                 <div class="bg-purple-50 rounded-xl p-3 text-center">
-                    <p class="text-xl font-black text-purple-600">{{ $user->reviews_count }}</p>
-                    <p class="text-[10px] text-gray-500 mt-0.5">نظر</p>
+                    <p class="text-xl font-black text-purple-600">{{ persian_number($user->conversations_count) }}</p>
+                    <p class="text-[10px] text-gray-500 mt-0.5">گفتگو</p>
                 </div>
             </div>
         </div>
@@ -286,8 +286,8 @@ $statusLabels = [
                     <span class="font-bold text-gray-800">{{ $user->addresses->count() }}</span>
                 </div>
                 <div class="flex justify-between">
-                    <span class="text-gray-500">سوالات</span>
-                    <span class="font-bold text-gray-800">{{ $user->questions_count }}</span>
+                    <span class="text-gray-500">درخواست‌های اجاره</span>
+                    <span class="font-bold text-gray-800">{{ persian_number($user->rental_applications_count) }}</span>
                 </div>
             </div>
         </div>

@@ -3,12 +3,15 @@
 namespace Tests\Feature;
 
 use App\Enums\RentalApplicationState;
+use App\Enums\ReservationState;
 use App\Models\Category;
 use App\Models\GuaranteeInquiry;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\RentalApplication;
 use App\Models\User;
+use App\Services\Banking\BankAccountService;
+use App\Services\Identity\IdentityVerificationService;
 use App\Services\Otp\OtpProviderInterface;
 use App\Services\Payment\Gateways\MockGateway;
 use App\Services\Rental\RentalChainOrchestrator;
@@ -60,6 +63,24 @@ class RentalBookingJourneyTest extends TestCase
         $this->product = $this->makeRentableProduct();
     }
 
+    /** Identity verified + a verified bank account -- the payment gate's prerequisites. */
+    private function completeKycFor(User $user): void
+    {
+        $identityService = app(IdentityVerificationService::class);
+
+        $identity = $identityService->submit($user, '0499370899', '1995-03-21');
+        $identity->loadMissing('user');
+        $identityService->runShahkar($identity);
+        $identityService->runCivilRegistry($identity);
+
+        $bankService = app(BankAccountService::class);
+        $card = $bankService->add($user, 'card', '6037997599999993');
+        $card->load('user.identity');
+        $bankService->verify($card);
+
+        $user->load(['identity', 'bankAccounts']);
+    }
+
     public function test_the_product_page_offers_online_reservation(): void
     {
         $response = $this->get(route('products.show', $this->product->slug))->assertOk();
@@ -89,13 +110,17 @@ class RentalBookingJourneyTest extends TestCase
         ])->assertOk()->assertJson(['success' => true]);
 
         $application = RentalApplication::where('application_number', $number)->firstOrFail();
-        $reservation = $application->refresh()->reservation;
+        $application->refresh();
 
-        $this->assertNotNull($reservation);
+        // C-15/C-16: selecting dates reserves NOTHING. The choice lives on the
+        // application and no inventory is blocked until the payment clears.
+        $this->assertNull($application->reservation);
+        $this->assertTrue($application->hasSelection());
+
         // The price is the server's, never the browser's.
-        $this->assertSame(0, $reservation->payable_now % 1);
-        $this->assertGreaterThan(0, $reservation->payable_now);
-        $this->assertGreaterThan(0, $reservation->deposit_amount);
+        $quote = (array) $application->quote;
+        $this->assertGreaterThan(0, $quote['payable_now']);
+        $this->assertGreaterThan(0, $quote['deposit']);
 
         // ── 2. The application page shows the journey ────────────────────
         $this->get(route('rental.applications.show', $application))
@@ -131,12 +156,24 @@ class RentalBookingJourneyTest extends TestCase
         $application->refresh()->loadMissing('order');
         $order = $application->order;
         $this->assertNotNull($order);
-        // The deposit is a hold, never a charge.
-        $this->assertSame($reservation->payable_now, (int) $order->total);
+        // The order is charged the quote snapshotted at selection. The deposit
+        // is a hold, never a charge, so it is not part of payable_now.
+        $quote = (array) $application->quote;
+        $this->assertSame($quote['payable_now'], (int) $order->total);
+
+        // Still no reservation: the order exists but the payment has not cleared.
+        $this->assertNull($application->refresh()->reservation);
 
         $this->settlePayment($order);
 
         $this->assertSame('paid', $order->fresh()->payment_status);
+
+        // C-15: the reservation exists only now, created by the verified
+        // payment, and it is the paid state that blocks inventory.
+        $reservation = $application->refresh()->reservation;
+        $this->assertNotNull($reservation, 'verified payment must create the reservation');
+        $this->assertSame(ReservationState::Paid, $reservation->state);
+        $this->assertSame($quote['payable_now'], (int) $reservation->payable_now);
 
         // ── 5. Guarantee ─────────────────────────────────────────────────
         $this->post(route('rental.applications.guarantee', $application), [
@@ -193,6 +230,10 @@ class RentalBookingJourneyTest extends TestCase
 
     public function test_paying_twice_creates_only_one_order(): void
     {
+        // C-13/C-14: payment is gated on identity and bank verification, so
+        // this fixture has to clear them before it can reach the gateway.
+        $this->completeKycFor($this->customer);
+
         $this->actingAs($this->customer->fresh());
 
         $number = $this->postJson(route('rental.applications.store'))->json('application_number');
