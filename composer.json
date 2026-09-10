@@ -1,7 +1,7 @@
 {
-    "name": "gamepek/gamepek-backend",
-    "description": "GamePek - PlayStation E-Commerce Backend",
-    "keywords": ["laravel", "framework", "gamepek", "playstation"],
+    "name": "gamepek/gamepek-rental",
+    "description": "GamePek Rental - console and accessory rental platform",
+    "keywords": ["laravel", "framework", "gamepek", "rental"],
     "license": "MIT",
     "require": {
         "php": "^8.2",

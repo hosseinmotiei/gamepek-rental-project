@@ -1,0 +1,195 @@
+# GamePek Rental — confirmed business decisions
+
+<div dir="rtl">
+
+> این سند تصمیم‌های **تأییدشدهٔ کسب‌وکار** را ثبت می‌کند. نام کد، فیلد و
+> اصطلاح فنی عمداً انگلیسی مانده تا قابل جستجو باشد.
+>
+> ثبت‌شده: ۱۷ شهریور ۱۴۰۵ (2026-09-08)
+
+</div>
+
+**Scope of this document:** it records policy that has been *decided*. It does
+**not** describe what the code does today, and nothing here has been
+implemented as part of recording it.
+
+Where a confirmed decision differs from current behaviour, that is called out
+explicitly in §3 — those are **implementation gaps**, not new decisions.
+
+Anything not listed in §1 is either in §4 (policy gate) or is not decided.
+**Do not infer a rule from silence.**
+
+---
+
+## 1. Confirmed decisions
+
+### 1.1 Geography and timing
+
+| # | Decision |
+|---|---|
+| C-01 | Service area is **Tehran only** for now |
+| C-02 | Within Tehran, **zones 1 and 2 only** |
+| C-03 | Rental is **date-based, not hourly** |
+| C-04 | Minimum rental duration is **1 day** |
+| C-05 | Maximum rental duration is **unlimited** |
+| C-06 | **Future booking is supported** |
+
+### 1.2 Customer journey ordering
+
+| # | Decision |
+|---|---|
+| C-07 | A customer **may choose a device before KYC** |
+| C-08 | **KYC must be completed before payment** |
+| C-09 | **Reservation occurs only after a successful, verified payment** |
+| C-10 | **There is no unpaid reservation hold** |
+| C-11 | Abandoned applications **remain stored but do not block inventory** |
+
+> C-09, C-10 and C-11 together mean inventory is only ever committed by money
+> that has actually cleared. See §3 — current code does not yet work this way.
+
+### 1.3 Devices and ownership
+
+| # | Decision |
+|---|---|
+| C-12 | One **Product** can have **multiple physical Device Units** |
+| C-13 | Every **Device Unit has its own serial number** |
+| C-14 | An **Owner can have multiple devices** |
+| C-15 | **GamePek can also own devices** (mixed fleet: GamePek-owned and owner-supplied) |
+| C-16 | The **Owner chooses availability dates** |
+| C-17 | A device becomes available again **according to the approved availability / operational state** |
+
+> C-12 answers the previously open "one Product = one unit or a pool?" question:
+> **a pool of individually-identified units.** This changes the availability
+> model — see §3.
+
+### 1.4 Pricing
+
+| # | Decision |
+|---|---|
+| C-18 | **GamePek determines rental pricing** |
+| C-19 | The **Owner cannot directly change price** |
+| C-20 | The Owner **may request** a price change |
+| C-21 | **Multi-day discounts exist** |
+| C-22 | **Admin controls** the discount duration/range and the percentage |
+| C-23 | The **selected game can affect price** |
+
+### 1.5 Concurrency
+
+| # | Decision |
+|---|---|
+| C-24 | **Multiple concurrent customer rentals are allowed** |
+| C-25 | There is currently **no concurrent-rental limit** |
+
+### 1.6 Money
+
+| # | Decision |
+|---|---|
+| C-26 | **GamePek commission = 35%** |
+| C-27 | **Owner share = 65%** |
+| C-28 | **Owner settlement is daily** |
+| C-29 | Rental financial movement **uses the Wallet** |
+
+### 1.7 Notifications
+
+| # | Decision |
+|---|---|
+| C-30 | **All rental lifecycle events should support SMS** |
+
+> The *copy* for each message is not approved — see §4.
+
+---
+
+## 2. What this changes about previously open questions
+
+Two questions that blocked architecture are now answered:
+
+| Previously open | Now confirmed |
+|---|---|
+| One `Product` = one physical device, or a pool? | **Pool.** One Product, many Device Units, each with a serial number (C-12, C-13) |
+| GamePek-owned fleet vs third-party owners? | **Both.** Owners supply devices *and* GamePek owns devices (C-14, C-15) |
+
+The Owner and Device Unit domains can therefore be designed. They are still not
+built — see §3.
+
+---
+
+## 3. Confirmed decisions the current code does not yet implement
+
+Recorded so the divergence is visible. **No behaviour was changed to record
+this.**
+
+| # | Confirmed | Current code |
+|---|---|---|
+| C-08 | KYC before payment | **No gating.** A customer can reserve and pay with no identity record at all |
+| C-09 | Reservation only after verified payment | **Reversed.** The chain is `ReservationHeld → PaymentPending → Paid` — the reservation is created first |
+| C-10 | No unpaid hold | **Unpaid holds exist.** `RentalReservation` is created in state `held` before any payment |
+| C-11 | Abandoned applications must not block inventory | **They do block.** Reservations are never released; a rejected or abandoned application blocks its dates permanently |
+| C-12 / C-13 | Product → many serialised Device Units | **No Device or Device Unit entity exists.** Reservations point at `products.id` |
+| C-14 / C-15 / C-16 | Owner domain, owner-chosen availability | **No Owner entity exists.** Availability comes from reservations plus a static JSON blob |
+| C-21 / C-22 | Admin-controlled multi-day discounts | Duration discount tiers exist in `config('rental.pricing.duration_discounts')` but are a **hardcoded placeholder**, not admin-editable and not owner-approved values |
+| C-23 | Selected game affects price | `RentalPricingService::quote()` accepts a `gameFee` parameter, but it is **always passed 0**; there is no game selection |
+| C-26 / C-27 / C-28 | 35/65 split, daily settlement | **No settlement, commission or payout code exists** |
+| C-29 | Wallet carries financial movement | **Wallet is a frontend `localStorage` prototype.** No balance column, no ledger, no service |
+| C-30 | SMS on all lifecycle events | **No SMS is ever sent.** Templates are empty; the seam exists |
+| C-01 / C-02 | Tehran, zones 1–2 | `config('rental.search.cities')` is `['تهران']` — city is enforced, **zones are not modelled at all** |
+
+---
+
+## 4. Policy gates — NOT decided, must not be invented
+
+These remain **blocked**. Code must continue to fail closed and record
+`*.policy_undefined` rather than guess. Nothing below may be implemented until
+the owner decides it, and several additionally require legal review.
+
+### 4.1 Requires business owner decision
+
+- Cancellation rules (customer, owner, GamePek)
+- Refund percentages and rules
+- Owner cancellation penalty
+- GamePek cancellation compensation
+- Guarantee type and amount
+- Deposit policy
+- Guarantee enforcement
+- Dispute policy
+- Exact damage valuation methodology
+- Lost-device valuation
+- Owner device-disable penalty amount / formula
+- Courier / delivery provider
+
+### 4.2 Requires legal review
+
+- Exact legal effect of the **two-hour issue-report window**
+- Final contract text
+- Cheque / promissory-note legal terms
+- Electronic-signature legal validity
+- Minor / guardian legal details
+- Data and video retention periods
+- Biometric consent details
+- Tax and invoicing requirements
+
+### 4.3 Still-open items from the existing `TODO(business)` register
+
+The B-register in the code remains authoritative for these. Confirmed decisions
+above resolve none of them except where §2 states otherwise:
+
+B1 required KYC checks · B2 liveness/face thresholds · B3 attempt cap ·
+B4 deposit hold/release · B5 guarantee amount formula · B6 mandatory cheque
+inquiries · B7 risk thresholds · B8 final-approval criteria · B9 cancellation/
+refund · B10 reservation hold expiry · B11 media retention · B12 contract text ·
+B13 SMS copy · B14 post-approval triggers.
+
+> **B10 note:** C-09/C-10 remove the *need* for an unpaid hold timeout, since no
+> unpaid hold should exist. B10 is not thereby "decided" — it is superseded once
+> C-09/C-10 are implemented.
+
+---
+
+## 5. Rules for using this document
+
+1. **Do not implement anything here as a side effect of reading it.** §3 is a
+   gap list, not a work order.
+2. **Do not treat §4 as soft.** An undefined policy means the code refuses and
+   audits. That is the designed behaviour, not a bug to work around.
+3. **Do not infer.** If a rule is not in §1, it is not decided.
+4. When a §4 item is decided, move it into §1 with a `C-nn` number and record
+   the date.

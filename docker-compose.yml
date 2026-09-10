@@ -3,7 +3,7 @@ version: '3.8'
 services:
   app:
     image: php:8.2-fpm
-    container_name: gamepek_app
+    container_name: gamepek_rental_app
     working_dir: /var/www/html
     volumes:
       - .:/var/www/html
@@ -14,11 +14,11 @@ services:
       - mysql
       - redis
     networks:
-      - gamepek_net
+      - gamepek_rental_net
 
   nginx:
     image: nginx:alpine
-    container_name: gamepek_nginx
+    container_name: gamepek_rental_nginx
     ports:
       - "8000:80"
     volumes:
@@ -27,35 +27,35 @@ services:
     depends_on:
       - app
     networks:
-      - gamepek_net
+      - gamepek_rental_net
 
   mysql:
     image: mysql:8.0
-    container_name: gamepek_mysql
+    container_name: gamepek_rental_mysql
     restart: unless-stopped
     ports:
       - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: root_password
-      MYSQL_DATABASE: gamepek
-      MYSQL_USER: gamepek_user
-      MYSQL_PASSWORD: gamepek_pass
+      MYSQL_DATABASE: gamepek_rental
+      MYSQL_USER: gamepek_rental_user
+      MYSQL_PASSWORD: gamepek_rental_pass
     volumes:
-      - gamepek_mysql_data:/var/lib/mysql
+      - gamepek_rental_mysql_data:/var/lib/mysql
     networks:
-      - gamepek_net
+      - gamepek_rental_net
 
   redis:
     image: redis:7-alpine
-    container_name: gamepek_redis
+    container_name: gamepek_rental_redis
     ports:
       - "6379:6379"
     networks:
-      - gamepek_net
+      - gamepek_rental_net
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
-    container_name: gamepek_phpmyadmin
+    container_name: gamepek_rental_phpmyadmin
     ports:
       - "8080:80"
     environment:
@@ -64,11 +64,11 @@ services:
     depends_on:
       - mysql
     networks:
-      - gamepek_net
+      - gamepek_rental_net
 
 volumes:
-  gamepek_mysql_data:
+  gamepek_rental_mysql_data:
 
 networks:
-  gamepek_net:
+  gamepek_rental_net:
     driver: bridge
