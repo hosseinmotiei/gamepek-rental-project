@@ -21,6 +21,11 @@
 @section('content')
 <main class="max-w-3xl mx-auto px-4 py-6 md:py-10" dir="rtl">
 
+    <a href="{{ route('rental.dashboard') }}"
+       class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-brandBlue mb-3 transition-colors">
+        <i class="fa-solid fa-arrow-right text-[10px]"></i> داشبورد اجاره
+    </a>
+
     <div class="flex items-center gap-3 mb-6">
         <div class="w-11 h-11 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0">
             <i class="fa-solid fa-clipboard-list text-brandBlue"></i>

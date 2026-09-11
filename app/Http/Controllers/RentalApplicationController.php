@@ -39,6 +39,42 @@ class RentalApplicationController extends Controller
     ) {}
 
     /**
+     * The customer's rental entry point: verification status, the one
+     * application still in progress (if any), and the most recent others.
+     *
+     * Read-only. Scoped through the user relation exactly like index() below
+     * -- no policy check per row is needed because the query itself can never
+     * return another customer's data. Introduces no new fact: "active" means
+     * "not terminal", using RentalApplicationState::isTerminal(), which
+     * RentalChainOrchestrator already defines and enforces elsewhere.
+     */
+    public function dashboard(Request $request)
+    {
+        $user = $request->user();
+        $user->loadMissing(['identity', 'bankAccounts']);
+
+        // A customer's own application count is inherently small (this is not
+        // an admin listing), so a plain cap is enough -- no new pagination
+        // concept is introduced for a page that shows only a handful of rows.
+        $applications = $user->rentalApplications()
+            ->with(['product', 'reservation'])
+            ->latest()
+            ->take(20)
+            ->get();
+
+        $active = $applications->first(fn (RentalApplication $application) => ! $application->state->isTerminal());
+
+        return view('rental.dashboard', [
+            'user' => $user,
+            'identity' => $user->identity,
+            'bankVerified' => $user->bankAccounts?->contains(fn ($account) => $account->isVerified()) ?? false,
+            'bankAny' => $user->bankAccounts?->isNotEmpty() ?? false,
+            'applications' => $applications,
+            'active' => $active,
+        ]);
+    }
+
+    /**
      * The customer's own rental applications, newest first.
      *
      * Scoped through the user relation rather than a policy check per row --

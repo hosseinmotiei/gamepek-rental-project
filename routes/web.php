@@ -174,6 +174,8 @@ Route::middleware('auth')->group(function () {
     // ──────────────────────────────────────────────────────────────────────
     // The rental chain itself.
     // ──────────────────────────────────────────────────────────────────────
+    Route::get('/rental/dashboard', [RentalApplicationController::class, 'dashboard'])->name('rental.dashboard');
+
     Route::prefix('rental/applications')->name('rental.applications.')->group(function () {
         Route::get('/', [RentalApplicationController::class, 'index'])->name('index');
         Route::post('/', [RentalApplicationController::class, 'store'])->name('store');
