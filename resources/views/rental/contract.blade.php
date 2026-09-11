@@ -7,6 +7,7 @@
 
     $badgeTone = match ($contract->state) {
         ContractState::Signed => 'bg-emerald-50 text-emerald-700',
+        ContractState::Void => 'bg-red-50 text-red-700',
         default => 'bg-blue-50 text-brandBlue',
     };
 @endphp
@@ -128,6 +129,18 @@
                 {{ \App\Support\Rental\Jalali::formatLong($contract->signed_at->format('Y-m-d')) }}
                 امضا شده است.
             </span>
+        </div>
+
+        <a href="{{ route('rental.applications.show', $application) }}"
+           class="inline-flex items-center gap-2 mt-4 text-xs md:text-sm text-brandBlue font-bold hover:underline">
+            <i class="fa-solid fa-arrow-right"></i> بازگشت به درخواست اجاره
+        </a>
+    @endif
+
+    @if ($contract->state === ContractState::Void)
+        <div class="mt-5 flex items-start gap-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs md:text-sm px-4 py-3">
+            <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
+            <span>این قرارداد باطل شده است و دیگر قابل پذیرش یا امضا نیست.</span>
         </div>
 
         <a href="{{ route('rental.applications.show', $application) }}"

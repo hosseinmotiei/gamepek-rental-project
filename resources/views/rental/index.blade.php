@@ -21,7 +21,12 @@
 @section('content')
 <main class="max-w-3xl mx-auto px-4 py-6 md:py-10" dir="rtl">
 
-    <h1 class="text-lg md:text-2xl font-black text-gray-800 mb-6">درخواست‌های اجاره من</h1>
+    <div class="flex items-center gap-3 mb-6">
+        <div class="w-11 h-11 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-clipboard-list text-brandBlue"></i>
+        </div>
+        <h1 class="text-lg md:text-2xl font-black text-gray-800">درخواست‌های اجاره من</h1>
+    </div>
 
     @if ($applications->isEmpty())
     <div class="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-100">

@@ -91,9 +91,14 @@
 <main class="max-w-3xl mx-auto px-4 py-6 md:py-10" dir="rtl">
 
     <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
-        <div>
-            <h1 class="text-lg md:text-2xl font-black text-gray-800">درخواست اجاره</h1>
-            <p class="text-[11px] md:text-xs text-gray-400 mt-0.5" dir="ltr">{{ $application->application_number }}</p>
+        <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-clipboard-list text-brandBlue"></i>
+            </div>
+            <div>
+                <h1 class="text-lg md:text-2xl font-black text-gray-800">درخواست اجاره</h1>
+                <p class="text-[11px] md:text-xs text-gray-400 mt-0.5" dir="ltr">{{ $application->application_number }}</p>
+            </div>
         </div>
         <span class="text-[11px] md:text-xs font-bold px-3 py-1.5 rounded-full {{ $badgeTone }}">
             {{ $application->state->label() }}
@@ -185,7 +190,10 @@
     {{-- ─── The journey ──────────────────────────────────────────────── --}}
     <section class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-5">
         <header class="px-5 py-4 border-b border-gray-100">
-            <h2 class="text-sm md:text-base font-bold text-gray-800">مراحل درخواست</h2>
+            <h2 class="text-sm md:text-base font-bold text-gray-800 flex items-center gap-2">
+                <i class="fa-solid fa-list-check text-gray-400"></i>
+                مراحل درخواست
+            </h2>
         </header>
 
         <ol class="divide-y divide-gray-50">
@@ -318,7 +326,10 @@
          exactly where the request stands and how it got there. --}}
     <section class="bg-white rounded-2xl border border-gray-100 shadow-sm">
         <header class="px-5 py-4 border-b border-gray-100">
-            <h2 class="text-sm md:text-base font-bold text-gray-800">تاریخچه</h2>
+            <h2 class="text-sm md:text-base font-bold text-gray-800 flex items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left text-gray-400"></i>
+                تاریخچه
+            </h2>
         </header>
         <div class="p-5 space-y-3">
             @forelse ($application->transitions->sortByDesc('created_at') as $transition)
