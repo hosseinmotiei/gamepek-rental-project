@@ -6,6 +6,7 @@ use App\Enums\CustodyActor;
 use App\Enums\CustodyTransferState;
 use App\Enums\CustodyTransferType;
 use App\Enums\DeviceOwnership;
+use App\Enums\RentalApplicationState;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use App\Models\Device;
@@ -598,6 +599,31 @@ class DeviceCustodyService
             CustodyTransferType::CustomerToGamePek,
             'این دستگاه در اجرای همین اجاره از مشتری دریافت نشده است.',
         );
+
+        // A later rental may already be counting on GamePek holding this
+        // console: its pickup resolved to `not_required` for exactly that
+        // reason, and it has not been delivered yet. Handing the device back
+        // to the owner now would leave that rental with a closed pickup and no
+        // device to deliver. Whether it should instead go home first is an
+        // allocation decision for a human; this only refuses the silent
+        // contradiction.
+        $reliedOnByAnotherRental = RentalOperation::where('device_id', $device->id)
+            ->where('type', RentalOperationType::OwnerDevicePickup->value)
+            ->where('state', RentalOperationState::NotRequired->value)
+            ->where('rental_reservation_id', '!=', $operation->rental_reservation_id)
+            ->whereHas('reservation', fn ($q) => $q->blocking())
+            ->whereHas('application', fn ($q) => $q->whereNotIn('state', [
+                RentalApplicationState::Active->value,
+                RentalApplicationState::Returned->value,
+                RentalApplicationState::Closed->value,
+                RentalApplicationState::Cancelled->value,
+                RentalApplicationState::Rejected->value,
+            ]))
+            ->exists();
+
+        if ($reliedOnByAnotherRental) {
+            throw new \RuntimeException('این دستگاه برای اجاره دیگری در اختیار گیم‌پک نگه داشته شده است و نمی‌توان آن را به مالک بازگرداند.');
+        }
     }
 
     /**

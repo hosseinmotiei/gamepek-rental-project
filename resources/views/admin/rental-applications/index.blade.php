@@ -58,7 +58,7 @@
                 </td>
                 <td class="px-4 py-3">
                     <x-admin.status-badge :color="match(true) {
-                        $application->state->value === 'approved' => 'green',
+                        in_array($application->state->value, ['approved', 'active', 'returned', 'closed'], true) => 'green',
                         in_array($application->state->value, ['rejected', 'cancelled'], true) => 'red',
                         str_ends_with($application->state->value, '_pending') => 'yellow',
                         default => 'blue',

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditEvent;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -157,6 +158,44 @@ class WalletTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertSame(25_000, $service->balance($this->customer));
         $this->assertSame(1, WalletTransaction::where('idempotency_key', 'idem-credit-1')->count());
+    }
+
+    /**
+     * Regression: the denial audit used to be written inside the debit
+     * transaction and rolled back by the throw that followed it, so no
+     * insufficient-balance refusal ever reached the audit trail.
+     */
+    public function test_an_insufficient_balance_denial_is_audited_durably(): void
+    {
+        $service = app(WalletService::class);
+        $service->credit($this->customer, 10_000, 'seed');
+
+        try {
+            $service->debit($this->customer, 20_000, 'too much');
+            $this->fail('An insufficient-balance debit must throw.');
+        } catch (\RuntimeException) {
+            // expected
+        }
+
+        $event = AuditEvent::forAction('wallet.debit_denied')->firstOrFail();
+        $this->assertSame('denied', $event->result);
+        $this->assertSame(20_000, $event->context['amount']);
+        $this->assertNotNull($event->correlation_id);
+    }
+
+    public function test_replaying_a_settled_debit_is_not_a_denial_even_after_the_balance_dropped(): void
+    {
+        $service = app(WalletService::class);
+        $service->credit($this->customer, 30_000, 'seed');
+
+        $first = $service->debit($this->customer, 20_000, 'reason', 'idem-debit-replay');
+        // Balance is now 10_000 < 20_000, yet the replay must return the
+        // original entry rather than refuse and audit a denial.
+        $replay = $service->debit($this->customer, 20_000, 'reason', 'idem-debit-replay');
+
+        $this->assertSame($first->id, $replay->id);
+        $this->assertSame(10_000, $service->balance($this->customer));
+        $this->assertFalse(AuditEvent::forAction('wallet.debit_denied')->exists());
     }
 
     public function test_a_repeated_debit_with_the_same_idempotency_key_is_applied_once(): void

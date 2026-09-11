@@ -161,8 +161,30 @@ class WalletService
     ): WalletTransaction {
         $this->assertPositiveAmount($amount);
 
-        return DB::transaction(function () use ($user, $amount, $reason, $idempotencyKey, $context, $actor) {
-            $wallet = $this->walletFor($user);
+        // Pre-transaction, unlocked check so the denial is audited DURABLY.
+        // An audit row written inside the transaction below and then rolled
+        // back by the throw that follows it would simply vanish -- the same
+        // reasoning ContractService::accept() and attachDevice() document. An
+        // idempotent replay of an entry that already exists is never a denial,
+        // so it skips this and is answered inside the transaction. The locked
+        // re-check below is the race-safety net and does not re-audit.
+        $wallet = $this->walletFor($user);
+        $isReplay = $idempotencyKey !== null && $this->findByIdempotencyKey($wallet, $idempotencyKey) !== null;
+
+        if (! $isReplay && $wallet->balance < $amount) {
+            AuditLogger::log(
+                action: 'wallet.debit_denied',
+                resourceType: 'Wallet',
+                resourceId: $wallet->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: ['amount' => $amount, 'balance' => $wallet->balance, 'reason' => $reason],
+                actor: $actor,
+            );
+
+            throw new \RuntimeException('موجودی کیف پول کافی نیست.');
+        }
+
+        return DB::transaction(function () use ($wallet, $amount, $reason, $idempotencyKey, $context, $actor) {
             $locked = Wallet::where('id', $wallet->id)->lockForUpdate()->first();
 
             if ($idempotencyKey !== null) {
@@ -174,15 +196,6 @@ class WalletService
             }
 
             if ($locked->balance < $amount) {
-                AuditLogger::log(
-                    action: 'wallet.debit_denied',
-                    resourceType: 'Wallet',
-                    resourceId: $locked->id,
-                    result: AuditLogger::RESULT_DENIED,
-                    context: ['amount' => $amount, 'balance' => $locked->balance, 'reason' => $reason],
-                    actor: $actor,
-                );
-
                 throw new \RuntimeException('موجودی کیف پول کافی نیست.');
             }
 

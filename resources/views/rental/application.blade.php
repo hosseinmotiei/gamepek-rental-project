@@ -14,6 +14,12 @@
     $bankVerified = $application->user?->bankAccounts?->contains(fn ($a) => $a->isVerified()) ?? false;
     $bankAny = $application->user?->bankAccounts?->isNotEmpty() ?? false;
     $isPaid = $order?->payment_status === 'paid';
+    $isApprovedOrLater = in_array($application->state, [
+        RentalApplicationState::Approved,
+        RentalApplicationState::Active,
+        RentalApplicationState::Returned,
+        RentalApplicationState::Closed,
+    ], true);
 
     // Each step is done / current / locked. The chain's own facts decide —
     // this mirrors RentalChainOrchestrator::nextState() and never writes state.
@@ -64,8 +70,10 @@
             'key' => 'approval',
             'icon' => 'fa-clipboard-check',
             'title' => 'تأیید نهایی',
-            'done' => $application->state === RentalApplicationState::Approved,
-            'status' => $application->state === RentalApplicationState::Approved ? 'تأیید شده' : 'در انتظار بررسی',
+            // Approval stays done once the rental moves on to delivery and
+            // return -- an Active or Returned rental was approved first.
+            'done' => $isApprovedOrLater,
+            'status' => $isApprovedOrLater ? 'تأیید شده' : 'در انتظار بررسی',
         ],
     ];
 

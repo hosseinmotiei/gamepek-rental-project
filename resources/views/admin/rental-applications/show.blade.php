@@ -15,7 +15,7 @@
         <div class="flex items-center justify-between mb-4">
             <h2 class="font-bold text-gray-800 text-sm">خلاصه درخواست</h2>
             <x-admin.status-badge :color="match(true) {
-                $application->state->value === 'approved' => 'green',
+                in_array($application->state->value, ['approved', 'active', 'returned', 'closed'], true) => 'green',
                 in_array($application->state->value, ['rejected', 'cancelled'], true) => 'red',
                 default => 'blue',
             }" :label="$application->state->label()" />

@@ -473,7 +473,27 @@ never collected, or take one back from a customer who never received it.
   range. Releasing that remainder is an availability policy (and interacts
   with the product capacity model, §10), so it was left unchanged.
 
-### 14.4 Still NOT decided
+### 14.4 Consistency between consecutive rentals of one console
+
+Technical guards, not allocation policy -- neither picks a device:
+
+- An **owner return is refused** while a later, not-yet-delivered rental's
+  pickup was closed as `not_required` because GamePek held this device. Sending
+  it home would leave that rental with no device and a closed pickup. Which of
+  the two should win is an allocation decision for a human.
+- **`attachDevice()` refuses a device with an open owner return** (scheduled,
+  in progress or failed-and-retryable). Otherwise the pickup would read "GamePek
+  has it", close as `not_required`, and then lose the device.
+
+Once the owner return completes, the next rental's pickup is a real
+owner -> GamePek collection again.
+
+Other hardening in the same batch: the customer page keeps the final-approval
+step marked done for Active/Returned rentals (it read "awaiting review"
+again after delivery), and the admin status badges colour Active/Returned as
+approved states.
+
+### 14.5 Still NOT decided
 
 Damage amount and taxonomy, any charge or refund following an inspection,
 anything that follows the window closing, whether the boundary instant counts

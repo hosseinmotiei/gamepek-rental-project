@@ -333,6 +333,21 @@ class RentalOperationService
                 throw new \RuntimeException('مالک این دستگاه مشخص نیست.');
             }
 
+            // A console on its way back to its owner cannot be promised to a
+            // new rental: the custody check below would read "GamePek has it"
+            // and close this pickup as not_required moments before the owner
+            // return takes it away. Any owner return that has not completed
+            // (a failed one may be retried) keeps the device off the table.
+            $leavingForOwner = RentalOperation::where('device_id', $device->id)
+                ->where('type', RentalOperationType::OwnerReturn->value)
+                ->where('rental_reservation_id', '!=', $reservation->id)
+                ->open()
+                ->exists();
+
+            if ($leavingForOwner) {
+                throw new \RuntimeException('این دستگاه در حال بازگرداندن به مالک است و قابل تخصیص نیست.');
+            }
+
             // Race guard: re-check under the device lock. Reuses the same
             // predicate as the pre-check above -- no second overlap concept,
             // and this does not touch product-level availability/capacity
