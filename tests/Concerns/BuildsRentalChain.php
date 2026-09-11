@@ -222,9 +222,13 @@ trait BuildsRentalChain
      * derived to AwaitingFinalApproval. The signing code is delivered by
      * whatever OtpProviderInterface the calling test has pinned.
      */
-    protected function signedApplication(User $user, string $code = '13579'): RentalApplication
-    {
-        $application = $this->contractAcceptedApplication($user);
+    protected function signedApplication(
+        User $user,
+        string $code = '13579',
+        string $nationalCode = self::NATIONAL_CODE,
+        string $sayadId = '1234567890123456',
+    ): RentalApplication {
+        $application = $this->contractAcceptedApplication($user, $sayadId, $nationalCode);
         $contract = $application->contract;
 
         $otp = app(SignatureOtpService::class);

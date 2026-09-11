@@ -80,6 +80,9 @@ class RentalOperationsHardeningGapsTest extends TestCase
         [$application, $operation] = $this->paidWithOperation('09140001001');
         $device = $this->ownerDevice($application->product, '09140001002', 'SCH-001');
         $staff = User::create(['full_name' => 'کارشناس', 'mobile' => '09140001003', 'status' => 'active']);
+        // The assignee must be staff (enforced by schedule() since the
+        // operations-integrity batch); this fixture always meant a staff member.
+        $staff->syncRoles(['support']);
 
         $this->operations->attachDevice($operation, $device, $this->admin);
 

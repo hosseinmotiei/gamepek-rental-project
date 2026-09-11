@@ -20,7 +20,7 @@
 
 <div class="mb-5">
     <h1 class="text-lg font-black text-gray-800">عملیات فیزیکی</h1>
-    <p class="text-xs text-gray-500 mt-1">تحویل گرفتن دستگاه از مالک. بازرسی، ارسال و بازگشت در مرحله‌های بعدی اضافه می‌شوند.</p>
+    <p class="text-xs text-gray-500 mt-1">تحویل گرفتن از مالک، تحویل به مشتری، بازگشت از مشتری و بازگرداندن به مالک.</p>
     <a href="{{ route('admin.operations.reconciliation') }}" class="inline-block mt-2 text-xs text-brandBlue hover:underline">بررسی مغایرت‌های عملیات و تحویل</a>
 </div>
 
@@ -32,6 +32,13 @@
         <option value="">همه وضعیت‌ها</option>
         @foreach ($states as $state)
             <option value="{{ $state->value }}" @selected(request('state') === $state->value)>{{ $state->label() }}</option>
+        @endforeach
+    </select>
+
+    <select name="type" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
+        <option value="">همه انواع</option>
+        @foreach ($types as $type)
+            <option value="{{ $type->value }}" @selected(request('type') === $type->value)>{{ $type->label() }}</option>
         @endforeach
     </select>
 

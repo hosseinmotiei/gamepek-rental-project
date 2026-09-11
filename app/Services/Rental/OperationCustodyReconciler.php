@@ -4,9 +4,11 @@ namespace App\Services\Rental;
 
 use App\Enums\CustodyActor;
 use App\Enums\DeviceOwnership;
+use App\Enums\RentalApplicationState;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use App\Models\DeviceCustodyTransfer;
+use App\Models\RentalApplication;
 use App\Models\RentalInspection;
 use App\Models\RentalOperation;
 use Illuminate\Support\Collection;
@@ -54,6 +56,15 @@ class OperationCustodyReconciler
     /** An inspection whose references disagree with its operation or handover. */
     public const INSPECTION_REFERENCE_MISMATCH = 'inspection_reference_mismatch';
 
+    /** The rental is Active (or later) but no delivery ever completed. */
+    public const ACTIVE_WITHOUT_DELIVERY = 'active_without_delivery';
+
+    /** The rental is Returned (or later) but no customer return completed. */
+    public const RETURNED_WITHOUT_RETURN = 'returned_without_return';
+
+    /** A delivery or return completed, but the rental never moved with it. */
+    public const LIFECYCLE_BEHIND_OPERATION = 'lifecycle_behind_operation';
+
     /** The completed task and its transfer describe different legs. */
     public const TRANSFER_TYPE_MISMATCH = 'transfer_type_mismatch';
 
@@ -79,6 +90,7 @@ class OperationCustodyReconciler
             ->merge($this->completedOperationFindings())
             ->merge($this->transferFindings())
             ->merge($this->inspectionFindings())
+            ->merge($this->lifecycleFindings())
             // A device mismatch is visible from both sides; report it once.
             ->unique(fn (array $f) => $f['code'].'|'.$f['operation_id'].'|'.$f['transfer_reference'])
             ->values();
@@ -98,6 +110,9 @@ class OperationCustodyReconciler
             self::COMPLETED_BUT_CUSTODY_NOT_CUSTOMER => 'تحویل تکمیل شده اما دستگاه در اختیار مشتری نیست',
             self::COMPLETED_BUT_CUSTODY_NOT_OWNER => 'بازگرداندن به مالک تکمیل شده اما دستگاه در اختیار مالک نیست',
             self::INSPECTION_REFERENCE_MISMATCH => 'ارجاعات بازرسی با عملیات یا سابقه تحویل آن هم‌خوان نیست',
+            self::ACTIVE_WITHOUT_DELIVERY => 'اجاره فعال است اما تحویلی به مشتری تکمیل نشده است',
+            self::RETURNED_WITHOUT_RETURN => 'اجاره بازگشت‌خورده است اما دریافتی از مشتری تکمیل نشده است',
+            self::LIFECYCLE_BEHIND_OPERATION => 'عملیات تکمیل شده اما وضعیت اجاره همراه آن تغییر نکرده است',
             self::TRANSFER_TYPE_MISMATCH => 'نوع سابقه تحویل با نوع عملیات یکسان نیست',
             self::DEVICE_MISMATCH => 'دستگاه عملیات با دستگاه سابقه تحویل یکسان نیست',
             self::TRANSFERRED_BUT_NOT_COMPLETED => 'تحویل ثبت شده اما عملیات بسته نشده است',
@@ -280,6 +295,61 @@ class OperationCustodyReconciler
                 'بازرسی شماره '.$inspection->id.' به دستگاه، رزرو، سابقه تحویل یا مرحله‌ای غیر از عملیات خود اشاره می‌کند.'
             )];
         });
+    }
+
+    /**
+     * The rental's own lifecycle and the physical tasks that drive it must
+     * agree. Delivery completion is the only producer of Active, return
+     * completion the only producer of Returned, and both happen in the same
+     * transaction as the handover -- so any disagreement means a row was
+     * written outside the services. Reported, never repaired.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function lifecycleFindings(): Collection
+    {
+        $postDelivery = [RentalApplicationState::Active, RentalApplicationState::Returned, RentalApplicationState::Closed];
+        $postReturn = [RentalApplicationState::Returned, RentalApplicationState::Closed];
+
+        $completed = RentalOperation::where('state', RentalOperationState::Completed->value)
+            ->whereIn('type', [RentalOperationType::CustomerDelivery->value, RentalOperationType::CustomerReturn->value])
+            ->get(['id', 'operation_number', 'rental_application_id', 'device_id', 'type']);
+
+        $applications = RentalApplication::query()
+            ->whereIn('state', array_map(fn ($s) => $s->value, $postDelivery))
+            ->orWhereIn('id', $completed->pluck('rental_application_id'))
+            ->get(['id', 'application_number', 'state'])
+            ->keyBy('id');
+
+        $findings = [];
+
+        foreach ($applications as $application) {
+            $types = $completed->where('rental_application_id', $application->id)->pluck('type');
+
+            if (in_array($application->state, $postDelivery, true)
+                && ! $types->contains(RentalOperationType::CustomerDelivery)) {
+                $findings[] = $this->finding(self::ACTIVE_WITHOUT_DELIVERY, null, null,
+                    'درخواست '.$application->application_number.' در وضعیت '.$application->state->label().' است اما تحویل تکمیل‌شده‌ای ندارد.');
+            }
+
+            if (in_array($application->state, $postReturn, true)
+                && ! $types->contains(RentalOperationType::CustomerReturn)) {
+                $findings[] = $this->finding(self::RETURNED_WITHOUT_RETURN, null, null,
+                    'درخواست '.$application->application_number.' در وضعیت '.$application->state->label().' است اما دریافت تکمیل‌شده‌ای از مشتری ندارد.');
+            }
+        }
+
+        foreach ($completed as $operation) {
+            $application = $applications->get($operation->rental_application_id);
+            $expected = $operation->type === RentalOperationType::CustomerDelivery ? $postDelivery : $postReturn;
+
+            if ($application !== null && ! in_array($application->state, $expected, true)) {
+                $findings[] = $this->finding(self::LIFECYCLE_BEHIND_OPERATION, $operation, null,
+                    'عملیات تکمیل شده است اما درخواست '.$application->application_number.' هنوز در وضعیت '.$application->state->label().' است.');
+            }
+        }
+
+        return collect($findings);
     }
 
     /** @return array<string, mixed> */

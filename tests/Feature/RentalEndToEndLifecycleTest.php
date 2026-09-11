@@ -333,17 +333,16 @@ class RentalEndToEndLifecycleTest extends TestCase
         $nextPickup = $operations->attachDevice($this->operation($second, RentalOperationType::OwnerDevicePickup), $device, $this->admin);
         $this->assertSame(RentalOperationState::NotRequired, $nextPickup->state);
 
-        $ownerReturn = $operations->openOwnerReturnForReservation($first, $this->admin);
-        $operations->start($ownerReturn->refresh(), $this->admin);
-
+        // Refused as early as possible: not even an owner-return task is
+        // opened, so nothing stale is left in the queue.
         try {
-            app(DeviceCustodyService::class)->requestReturnToOwner($ownerReturn->refresh(), $this->admin);
+            $operations->openOwnerReturnForReservation($first, $this->admin);
             $this->fail('The device is held for another rental and must not go home.');
         } catch (\RuntimeException $e) {
             $this->assertStringContainsString('اجاره دیگری', $e->getMessage());
         }
 
-        $this->assertNull($ownerReturn->refresh()->custodyTransfer()->first());
+        $this->assertSame(0, RentalOperation::where('type', RentalOperationType::OwnerReturn->value)->count());
         $this->assertSame(CustodyActor::GamePek, $device->fresh()->currentCustody());
     }
 

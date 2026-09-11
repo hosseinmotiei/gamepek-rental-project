@@ -50,6 +50,8 @@ class OperationController extends Controller
         $operations = RentalOperation::with(['device.product', 'owner.user', 'application', 'assignedTo'])
             ->when($request->filled('state'), fn ($q) => $q->where('state', $request->get('state')))
             ->when($request->boolean('open'), fn ($q) => $q->open())
+            // tryFrom: an unknown value filters nothing rather than erroring.
+            ->when(RentalOperationType::tryFrom((string) $request->get('type')), fn ($q, $type) => $q->where('type', $type->value))
             ->when($request->filled('q'), fn ($q) => $q->where('operation_number', 'like', '%'.$request->get('q').'%'))
             ->latest('id')
             ->paginate(20)
@@ -58,6 +60,7 @@ class OperationController extends Controller
         return view('admin.operations.index', [
             'operations' => $operations,
             'states' => RentalOperationState::cases(),
+            'types' => RentalOperationType::cases(),
         ]);
     }
 

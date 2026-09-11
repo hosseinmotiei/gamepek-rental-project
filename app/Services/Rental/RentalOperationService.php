@@ -3,11 +3,13 @@
 namespace App\Services\Rental;
 
 use App\Enums\CustodyActor;
+use App\Enums\CustodyTransferType;
 use App\Enums\DeviceOwnership;
 use App\Enums\RentalApplicationState;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use App\Models\Device;
+use App\Models\DeviceCustodyTransfer;
 use App\Models\RentalOperation;
 use App\Models\RentalReservation;
 use App\Models\User;
@@ -155,6 +157,13 @@ class RentalOperationService
 
         if ($device->ownership !== DeviceOwnership::Owner || $device->owner_id === null) {
             throw new \RuntimeException('این دستگاه متعلق به گیم‌پک است و بازگرداندن به مالک ندارد.');
+        }
+
+        // Refused at opening, not only when the handover is attempted: an
+        // owner return that can never run would otherwise sit open and
+        // mislead the queue.
+        if ($this->isDeviceHeldForAnotherRental($device->id, $reservation->id)) {
+            throw new \RuntimeException('این دستگاه برای اجاره دیگری در اختیار گیم‌پک نگه داشته شده است و نمی‌توان آن را به مالک بازگرداند.');
         }
 
         return $this->openOperation($reservation, RentalOperationType::OwnerReturn, $actor);
@@ -338,13 +347,7 @@ class RentalOperationService
             // and close this pickup as not_required moments before the owner
             // return takes it away. Any owner return that has not completed
             // (a failed one may be retried) keeps the device off the table.
-            $leavingForOwner = RentalOperation::where('device_id', $device->id)
-                ->where('type', RentalOperationType::OwnerReturn->value)
-                ->where('rental_reservation_id', '!=', $reservation->id)
-                ->open()
-                ->exists();
-
-            if ($leavingForOwner) {
+            if ($this->hasExecutableOwnerReturn($device->id, $reservation->id)) {
                 throw new \RuntimeException('این دستگاه در حال بازگرداندن به مالک است و قابل تخصیص نیست.');
             }
 
@@ -423,6 +426,14 @@ class RentalOperationService
 
             if ($locked->state !== RentalOperationState::Scheduled) {
                 throw new \RuntimeException('این عملیات در وضعیت لازم برای زمان‌بندی نیست.');
+            }
+
+            // The responsible person must be staff. Checked here, not only in
+            // the form, so no caller can name a customer or an owner as the
+            // one carrying out GamePek's physical work.
+            if ($assignedToUserId !== null
+                && ! User::find($assignedToUserId)?->hasAnyRole(config('rental.admin.roles'))) {
+                throw new \RuntimeException('مسئول عملیات باید از کارکنان گیم‌پک باشد.');
             }
 
             $locked->scheduled_at = $scheduledAt ? now()->parse($scheduledAt) : null;
@@ -649,6 +660,68 @@ class RentalOperationService
         );
 
         return $operation;
+    }
+
+    /**
+     * Is this console currently promised to ANOTHER rental on the strength
+     * of GamePek holding it?
+     *
+     * True when another rental's pickup was closed as `not_required` for this
+     * device, that rental's reservation still blocks, and it has not been
+     * delivered yet. Sending the device to its owner then would leave that
+     * rental with a closed pickup and nothing to deliver. The one definition,
+     * shared by the owner-return opener here and the custody service's
+     * backstop, so the two can never disagree.
+     */
+    public function isDeviceHeldForAnotherRental(int $deviceId, int $reservationId): bool
+    {
+        return RentalOperation::where('device_id', $deviceId)
+            ->where('type', RentalOperationType::OwnerDevicePickup->value)
+            ->where('state', RentalOperationState::NotRequired->value)
+            ->where('rental_reservation_id', '!=', $reservationId)
+            ->whereHas('reservation', fn ($q) => $q->blocking())
+            // "Not yet delivered, and still alive": every non-terminal rung
+            // below Active. Terminal states (cancelled, rejected, closed) sit
+            // outside the ladder with order() -1, so they are excluded too.
+            ->whereHas('application', fn ($q) => $q->whereIn('state', array_map(
+                fn (RentalApplicationState $s) => $s->value,
+                array_filter(
+                    RentalApplicationState::cases(),
+                    fn (RentalApplicationState $s) => $s->order() >= 0
+                        && $s->order() < RentalApplicationState::Active->order(),
+                ),
+            )))
+            ->exists();
+    }
+
+    /**
+     * Does another rental have an owner return for this device that can still
+     * actually run?
+     *
+     * An owner return is executable only while the device's latest movement
+     * is that same rental's customer return (DeviceCustodyService enforces
+     * exactly this). A stale one -- superseded by later movements -- can never
+     * complete, so it must not keep the console off the market forever; a
+     * failed-but-retryable one still can, so it does.
+     */
+    private function hasExecutableOwnerReturn(int $deviceId, int $reservationId): bool
+    {
+        $latest = DeviceCustodyTransfer::where('device_id', $deviceId)
+            ->possessionMoved()
+            ->latest('id')
+            ->first();
+
+        if ($latest === null
+            || $latest->transfer_type !== CustodyTransferType::CustomerToGamePek
+            || $latest->rental_reservation_id === $reservationId) {
+            return false;
+        }
+
+        return RentalOperation::where('device_id', $deviceId)
+            ->where('type', RentalOperationType::OwnerReturn->value)
+            ->where('rental_reservation_id', $latest->rental_reservation_id)
+            ->open()
+            ->exists();
     }
 
     private function isDuplicateOperation(QueryException $e): bool

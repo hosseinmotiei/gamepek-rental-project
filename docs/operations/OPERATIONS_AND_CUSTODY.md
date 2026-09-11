@@ -493,7 +493,49 @@ step marked done for Active/Returned rentals (it read "awaiting review"
 again after delivery), and the admin status badges colour Active/Returned as
 approved states.
 
-### 14.5 Still NOT decided
+Refinements (operations-integrity batch):
+
+- The "held for another rental" predicate lives in exactly one place,
+  `RentalOperationService::isDeviceHeldForAnotherRental()`, used both when an
+  owner return is **opened** (it is now refused at opening, so no task that
+  can never run is left in the queue) and as the custody service's backstop.
+- The allocation guard counts only an owner return that can still
+  **execute** -- one whose rental's customer return is the device's latest
+  movement. A superseded owner return (e.g. a legacy task left open while a
+  later rental ran its course) no longer keeps the console off the market
+  forever. A failed-but-retryable owner return still holds the device.
+- `schedule()` refuses an assignee without a staff role
+  (`config('rental.admin.roles')`), in the service, not only the form.
+- The operations queue can be filtered by operation type.
+- The reconciler also compares the rental lifecycle with the operations
+  (`active_without_delivery`, `returned_without_return`,
+  `lifecycle_behind_operation`). Still read-only.
+
+### 14.5 Early return -- the exact technical dependency (behaviour unchanged)
+
+Availability is decided by two predicates on `rental_reservations` and
+nothing else: `scopeOverlapping()` (dates) and `scopeBlocking()` (state is
+`paid` or `active`). Both the product-level check
+(`RentalAvailabilityService::isFree()` / `constrainProductQuery()` /
+`blockedRangesFor()`) and the device-level check
+(`RentalOperationService::deviceOverlapsAnotherBlockingReservation()`) go
+through them.
+
+No operational step writes the reservation's `state`, so a returned rental's
+reservation stays `paid` and keeps blocking until its `end_date` passes.
+Releasing the remaining days after an early return would need ONE of:
+
+1. a single writer that moves the reservation `paid -> active -> returned`
+   (the transitions already exist in `ReservationState`) when the delivery
+   and return complete, and `scopeBlocking()` then excluding `returned`; or
+2. truncating the reservation's `end_date` to the return date.
+
+Either changes customer-visible availability (the calendar and search) and
+the device-level overlap check at once, and interacts with the undecided
+product-capacity model (§10). It is therefore **not** implemented; it is a
+policy decision, not a technical gap.
+
+### 14.6 Still NOT decided
 
 Damage amount and taxonomy, any charge or refund following an inspection,
 anything that follows the window closing, whether the boundary instant counts

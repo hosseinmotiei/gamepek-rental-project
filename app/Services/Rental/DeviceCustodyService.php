@@ -6,7 +6,6 @@ use App\Enums\CustodyActor;
 use App\Enums\CustodyTransferState;
 use App\Enums\CustodyTransferType;
 use App\Enums\DeviceOwnership;
-use App\Enums\RentalApplicationState;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use App\Models\Device;
@@ -607,21 +606,7 @@ class DeviceCustodyService
         // device to deliver. Whether it should instead go home first is an
         // allocation decision for a human; this only refuses the silent
         // contradiction.
-        $reliedOnByAnotherRental = RentalOperation::where('device_id', $device->id)
-            ->where('type', RentalOperationType::OwnerDevicePickup->value)
-            ->where('state', RentalOperationState::NotRequired->value)
-            ->where('rental_reservation_id', '!=', $operation->rental_reservation_id)
-            ->whereHas('reservation', fn ($q) => $q->blocking())
-            ->whereHas('application', fn ($q) => $q->whereNotIn('state', [
-                RentalApplicationState::Active->value,
-                RentalApplicationState::Returned->value,
-                RentalApplicationState::Closed->value,
-                RentalApplicationState::Cancelled->value,
-                RentalApplicationState::Rejected->value,
-            ]))
-            ->exists();
-
-        if ($reliedOnByAnotherRental) {
+        if ($this->operations->isDeviceHeldForAnotherRental($device->id, $operation->rental_reservation_id)) {
             throw new \RuntimeException('این دستگاه برای اجاره دیگری در اختیار گیم‌پک نگه داشته شده است و نمی‌توان آن را به مالک بازگرداند.');
         }
     }
