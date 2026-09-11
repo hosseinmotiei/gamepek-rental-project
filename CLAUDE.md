@@ -35,7 +35,7 @@ matrix and a manual test scenario. Path-scoped rules live in
 A complete, audited, state-machine-driven **rental chain exists and works**:
 reservations, identity/bank/guarantee verification, payment, contract
 generation, signing, and admin approval are all implemented, and the
-repository has a **Feature suite of 573 test methods**.
+repository has a **Feature suite of 585 test methods**.
 
 | Area | Status |
 |---|---|
@@ -61,9 +61,9 @@ repository has a **Feature suite of 573 test methods**.
 | Availability | **Physical-device capacity** (C-55); early return frees the device (C-53); no mid-rental reclaim (C-54) — docs/operations/OPERATIONS_AND_CUSTODY.md §17 |
 | Device allocation to a reservation | Manual admin attachment implemented (`attachDevice()`), now with device-level overlap safety — **selection policy itself remains undecided (section 10.3b)** |
 | Delivery / customer return / owner return | Implemented (staff-driven), all four custody legs. Inspection: **free-text append-only evidence only**. Damage: expert amount recorded (append-only); when the customer pays it, the payment is recorded once and credited in full to the GamePek wallet — **no formula, no automatic charge** (docs/operations/OPERATIONS_AND_CUSTODY.md §14–§15) |
-| Late return | **Implemented** (C-57): the device stays unavailable until it is physically back; late days cost the reservation's daily rate **+15%**. Calculation only — **who receives the late fee is undecided**, so nothing is charged or settled (docs/operations/OPERATIONS_AND_CUSTODY.md §18) |
+| Late return | **Implemented** (C-57): the device stays unavailable until it is physically back; late days cost the reservation's daily rate **+15%**. Calculation only — the recipient is **DEFERRED by owner decision** (C-60), so nothing is charged, credited, split or offered as an action (docs/operations/OPERATIONS_AND_CUSTODY.md §18) |
 | Settlement (35/65) | **Implemented**: `rental_total` only, owner credited once to the Owner Wallet via `WalletService`. **Manual by decision (C-48)** — no scheduler |
-| Promissory note / damage payment | **Implemented** (`GuaranteeNoteService`, `rental_damage_payments`); the note is never money; paid damage credits the GamePek system wallet in full (C-50). A note **retained** by GamePek is not terminal (C-58): the customer may pay later and get it back; a note handed to an owner is terminal |
+| Promissory note / damage payment | **Implemented** (`GuaranteeNoteService`, `rental_damage_payments`); the note is never money; paid damage credits the GamePek system wallet in full (C-50). A note **retained** by GamePek is not terminal (C-58): the customer may pay later — **including after the rental is Closed** (C-59) — and get it back; a note handed to an owner is terminal. A post-close payment never moves the lifecycle, custody or a settlement |
 | Closure | **Implemented**: `RentalChainOrchestrator::close()`, explicit and gated by `RentalClosureReadiness`; never automatic (docs/operations/OPERATIONS_AND_CUSTODY.md §16) |
 | Receipt/signature for a handover | Receipt reference recorded at the door; **whether a digital signature may replace the paper one is undecided** |
 
@@ -732,7 +732,7 @@ Note: `docs/rental-flow-fa.md` describes the **architecture as built**, which in
 several places differs from confirmed business policy (reservation ordering,
 KYC gating, device units). Its header now carries that warning and links to the
 confirmed-decisions document. Its test counts are kept in step with the
-verified Feature run (`573 tests, 2653 assertions`).
+verified Feature run (`585 tests, 2729 assertions`).
 
 ---
 

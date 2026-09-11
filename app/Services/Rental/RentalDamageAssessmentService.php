@@ -143,7 +143,21 @@ class RentalDamageAssessmentService
                 return $existing;
             }
 
-            if (RentalApplication::whereKey($application->id)->firstOrFail(['id', 'state'])->state !== RentalApplicationState::Returned) {
+            // CONFIRMED (C-59): closing a rental does not extinguish an unpaid
+            // damage. A rental can be closed with the note retained precisely
+            // BECAUSE the damage is outstanding, so the customer must still be
+            // able to settle it afterwards. Closed is accepted for that reason
+            // alone -- this records a payment and NOTHING else: the lifecycle
+            // state is not touched here (the orchestrator remains its only
+            // writer), no operation or custody transfer is created, and no
+            // settlement is recalculated.
+            //
+            // Every other state is still refused: the device must be back
+            // before a return-inspection damage can be paid, and a cancelled or
+            // rejected rental has no confirmed rule at all (C-52).
+            $state = RentalApplication::whereKey($application->id)->firstOrFail(['id', 'state'])->state;
+
+            if (! in_array($state, [RentalApplicationState::Returned, RentalApplicationState::Closed], true)) {
                 throw new \RuntimeException('خسارت فقط برای اجاره‌ای که دستگاه آن بازگشته است پرداخت می‌شود.');
             }
 

@@ -771,8 +771,31 @@ leaves the note **with GamePek**. GamePek still physically holds it, so:
 - re-pricing still stops at retention, so the amount the customer can pay is
   the amount that was recorded.
 
-Whether that payment is still possible **after the rental has been closed** is
-NOT decided; today it is accepted only while the rental is `Returned`.
+### 18.4 Paying after closure (C-59)
+
+CONFIRMED: closing a rental does not extinguish an unpaid damage. A rental can
+be closed **because** the retained note resolved the obligation for closure
+purposes, so the customer must still be able to settle it afterwards:
+
+- `recordPayment()` accepts `Returned` **or** `Closed`; every other state is
+  still refused, cancelled and rejected included (C-52 gives them no rule);
+- `returnToCustomer()` accepts `Closed` as well, so the paid note goes home
+  through the same append-only event mechanism;
+- transfer and retention stay `Returned`-only — no confirmed rule creates
+  either after closure.
+
+A post-close payment is a **financial record and nothing else**. It writes one
+`rental_damage_payments` row and one GamePek wallet credit, both idempotent.
+It does not: move `rental_applications.state` (the orchestrator is still its
+only writer, and `nextState()` now short-circuits terminal states so a closed
+rental cannot be re-derived), open an operation, move custody, re-block the
+device, or create or recalculate a settlement. Closure readiness cannot regress
+either: paying an outstanding damage only moves `damage_resolution` from
+satisfied-by-retention to satisfied-by-payment.
+
+**Late fee, restated (C-60):** the recipient is DEFERRED by owner decision.
+Nothing charges, credits, splits or offers to settle it; admin shows it as a
+calculation explicitly distinguished from payable money.
 
 **Reconciler additions:** a device released while it is still in the customer's
 custody; a legacy return with no release date (classified apart from a real

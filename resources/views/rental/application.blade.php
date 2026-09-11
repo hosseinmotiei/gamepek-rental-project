@@ -546,7 +546,25 @@
                     <span class="font-bold text-gray-800">{{ $noteStatus->label() }}</span>
                 </div>
                 @if ($damageStatus === \App\Services\Rental\RentalDamageAssessmentService::UNPAID)
-                    <p class="text-[11px] text-gray-500 leading-6">برای پرداخت خسارت با پشتیبانی گیم‌پک هماهنگ کنید.</p>
+                    @if ($noteStatus === \App\Enums\GuaranteeNoteStatus::TransferredToOwner)
+                        {{-- Factual, and nothing more: the note is no longer
+                             with GamePek, so this payment path is closed. No
+                             legal or collection wording is written here. --}}
+                        <p class="text-[11px] text-gray-500 leading-6">
+                            سفته شما به مالک دستگاه تحویل شده است و پرداخت این خسارت از طریق گیم‌پک ثبت نمی‌شود.
+                            برای پیگیری با پشتیبانی گیم‌پک تماس بگیرید.
+                        </p>
+                    @else
+                        <p class="text-[11px] text-gray-500 leading-6">
+                            برای پرداخت خسارت با پشتیبانی گیم‌پک هماهنگ کنید.
+                            @if ($noteStatus === \App\Enums\GuaranteeNoteStatus::RetainedByGamePek)
+                                سفته شما نزد گیم‌پک است و پس از پرداخت کامل مبلغ خسارت، به شما بازگردانده می‌شود.
+                                @if ($application->state === RentalApplicationState::Closed)
+                                    پایان‌یافتن این اجاره مانع پرداخت نیست و پرداخت، اجاره را دوباره فعال نمی‌کند.
+                                @endif
+                            @endif
+                        </p>
+                    @endif
                 @endif
             </div>
         </section>

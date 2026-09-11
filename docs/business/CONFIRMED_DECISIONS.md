@@ -130,6 +130,10 @@ Anything not listed in §1 is either in §4 (policy gate) or is not decided.
 | C-57 | **Late return**: past the contractual end date the rental is late. The physical device stays **unavailable until GamePek actually receives it** — availability is never released on the contractual end date — and it becomes available **from the day after** the actual return. The contractual dates are never changed, and lateness neither closes nor settles the rental. The late charge is the **applicable rental daily cost for each late day, plus 15%** — nothing else |
 | C-58 | A promissory note **retained by GamePek** (a GamePek-owned device, so there is no owner to hand it to) is **not** a final outcome: GamePek still physically holds it, so the customer may pay the assessed damage **later**, and the note is then returned to them. A note **handed to an owner** stays final — GamePek takes no damage money for it afterwards |
 
+| C-59 | **Damage may be paid after the rental is Closed.** A GamePek-retained promissory note stays resolvable by the customer after closure; once the full assessed amount is paid the note is returned to them. A note already **handed to an owner** stays outside this path. A post-close payment is a financial record only: it does **not** reopen the lifecycle, create an operation or custody movement, re-block the device, or produce a second settlement. Note history stays append-only |
+| C-60 | **The late fee's recipient is DEFERRED** — explicitly postponed, not merely unwritten. The calculation stays (C-57); charging, settling or distributing it stays blocked until an explicit policy exists. Nothing may route it through the 35/65 split |
+| C-61 | **Zones 1 and 2 are geographic scope only** (C-02). Their operational effect — pricing, availability, delivery windows, rental rules — is **DEFERRED**; none may be invented or implemented |
+
 > **How the late charge is computed** (technical reading of C-57, not a new
 > decision): the daily cost is `rental_reservations.daily_rate` — the per-day
 > rental price snapshotted when the customer booked. Late days are
@@ -199,6 +203,8 @@ this.**
 | C-23 | Selected game affects price | `RentalPricingService::quote()` accepts a `gameFee` parameter, but it is **always passed 0**; there is no game selection |
 | C-26 / C-27 / C-28, C-41–C-43 | 35/65 split to the Owner Wallet | **Implemented.** Base = `reservation.rental_total` (rental price; excludes delivery fee and the note). `RentalSettlementService::finalize()` credits the owner once through `WalletService` after the C-43 settlement point; `rental_settlement_credits` separates credited from calculated. **Not implemented:** a scheduled *daily* run — finalization is a staff action per rental |
 | C-44 – C-47, C-58 | Promissory note lifecycle | **Implemented** as `guarantee_note_events` (received → returned to customer XOR transferred to owner, with retention by GamePek as a non-final middle state per C-58), driven by the damage outcome. No legal wording, deadline or collection workflow |
+| C-59 | Damage payable after closure | **Implemented.** `RentalDamageAssessmentService::recordPayment()` accepts `Returned` **or** `Closed` and writes only a payment plus its single GamePek wallet credit; `GuaranteeNoteService::returnToCustomer()` accepts `Closed` too, so the retained note can go home. Transfer and retention stay `Returned`-only, cancelled/rejected stay refused, and the lifecycle is untouched — `nextState()` now also short-circuits terminal states so a closed rental can never be re-derived onto an earlier rung |
+| C-60 / C-61 | Late-fee recipient, zone effects | **Deferred, and enforced as such.** No code path charges, credits or splits a late fee, and no route or screen offers to; no zone concept exists |
 | C-57 | Late return | **Implemented.** Availability: `RentalReservation::blockedUntil()` answers `OPEN_ENDED` while an Active rental is past its end date, and the actual `returned_on` afterwards — so the device is released the day after it physically returns, never on the contractual date. Money: `App\Support\Rental\LateReturn` computes late days × `daily_rate` + 15%. **Calculation only** — no ledger entry, no settlement effect, no automatic charge, because the fee's destination is undecided (§4.1) |
 | C-29 | Wallet carries financial movement | **Implemented and in use.** `App\Services\Wallet\WalletService` (persisted balance, immutable ledger, idempotent credit/debit) is written by exactly two callers: the owner's 65% (`RentalSettlementService::finalize()`) and a paid damage credited in full to the GamePek system wallet (`RentalDamageAssessmentService::recordPayment()`). **No payout, deposit or refund rule exists** and nothing debits a wallet in the rental flow. The customer profile's wallet tab is still a separate, unconnected `localStorage` prototype |
 | C-30 | SMS on all lifecycle events | **No SMS is ever sent.** Templates are empty; the seam exists |
@@ -214,21 +220,23 @@ the owner decides it, and several additionally require legal review.
 
 ### 4.1 Requires business owner decision
 
-- **Who receives the late-return fee** (C-57). The amount is confirmed and is
-  calculated; its destination is not. The 35/65 split is defined on
-  `rental_total`, and no rule says whether a late fee joins that split, goes to
-  the owner whose device was held longer, or stays with GamePek. Until this is
-  decided the fee is **never charged, credited or settled** — a settlement on a
-  late rental records `settlement.late_fee_undistributed` in the audit trail
+- **Who receives the late-return fee** (C-57) — **DEFERRED by the owner**
+  (C-60), i.e. deliberately postponed. The amount is confirmed and calculated;
+  its destination is not, and must not be inferred from the 35/65 split, which
+  is defined on `rental_total` alone. Until an explicit policy exists the fee is
+  **never charged, credited, settled or distributed**, no screen offers an
+  action to settle it, and a settlement on a late rental records
+  `settlement.late_fee_undistributed` in the audit trail
 - Whether the **extra-controller fee and the duration discount** extend into a
   late period (C-57). The code charges `daily_rate` alone for late days
-- Whether a customer may still **pay a retained note's damage after the rental
-  has been closed** (C-58). Payment is currently accepted only while the rental
-  is `Returned`; closing it ends that path, and nothing reopens it
-- **Zone 1/2 delivery terms** (C-02). The zones are a confirmed service-area
-  decision but nothing says what differs between them — price, availability,
-  delivery window or nothing at all. No zone is modelled, and the delivery fee
-  is a single flat per-product figure
+- ~~Whether a customer may pay a retained note's damage after closure~~ —
+  **decided by C-59: allowed.** What stays undecided is any *other* post-close
+  action: a cancelled or rejected rental's damage, and whether a note could be
+  transferred or retained after closure (neither is permitted today)
+- **Zone 1/2 operational terms** (C-02) — **DEFERRED** (C-61). The zones are a
+  confirmed service-area decision; what differs between them — price,
+  availability, delivery window, or nothing at all — is postponed. No zone is
+  modelled, and the delivery fee stays a single flat per-product figure
 - Cancellation rules (customer, owner, GamePek)
 - Refund percentages and rules
 - Owner cancellation penalty

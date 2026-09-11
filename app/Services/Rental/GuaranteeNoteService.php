@@ -36,7 +36,10 @@ use Illuminate\Support\Facades\DB;
  * the note stays with GamePek (retainByGamePek). That retention is NOT the end
  * of the story -- GamePek still physically holds the note, so the customer may
  * pay the assessed damage later and get it back. A return or an owner transfer
- * is what ends it; after either, nothing more can be recorded. A rental cancelled after
+ * is what ends it; after either, nothing more can be recorded. That retained
+ * note survives closure (C-59): a rental may be closed while it is still held,
+ * and paying the damage afterwards still sends it back to the customer --
+ * without touching the rental's lifecycle state. A rental cancelled after
  * the note was received leaves it HELD: cancellation returns, transfers and
  * retains nothing, and no future action for that case is invented here.
  *
@@ -89,7 +92,12 @@ class GuaranteeNoteService
     public function returnToCustomer(RentalApplication $application, User $actor, ?string $notes = null): GuaranteeNoteEvent
     {
         return $this->write($application, $actor, GuaranteeNoteEvent::RETURNED_TO_CUSTOMER, $notes, function (RentalApplication $app) {
-            $this->assertReturnedAndInspected($app);
+            // CONFIRMED (C-59): a rental closed with the note retained for an
+            // unpaid damage can still be settled by the customer afterwards,
+            // and the note must then go back to them. So a CLOSED rental may
+            // still reach this one outcome. Nothing about the lifecycle moves:
+            // this appends a note event, exactly as it would before closure.
+            $this->assertReturnedAndInspected($app, allowClosed: true);
 
             $damage = $this->damage->statusFor($app->id);
 
@@ -175,9 +183,19 @@ class GuaranteeNoteService
         });
     }
 
-    private function assertReturnedAndInspected(RentalApplication $app): void
+    /**
+     * @param  bool  $allowClosed  only the return-to-customer outcome (C-59);
+     *                             transfer and retention stay Returned-only,
+     *                             since no confirmed rule creates either of
+     *                             them after a rental has been closed.
+     */
+    private function assertReturnedAndInspected(RentalApplication $app, bool $allowClosed = false): void
     {
-        if ($app->state !== RentalApplicationState::Returned) {
+        $allowed = $allowClosed
+            ? [RentalApplicationState::Returned, RentalApplicationState::Closed]
+            : [RentalApplicationState::Returned];
+
+        if (! in_array($app->state, $allowed, true)) {
             throw new \RuntimeException('سفته فقط پس از دریافت دستگاه از مشتری تعیین تکلیف می‌شود.');
         }
 

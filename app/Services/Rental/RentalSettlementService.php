@@ -217,7 +217,7 @@ class RentalSettlementService
                         'rental_application_id' => $application->id,
                         'late_days' => $late->lateDays,
                         'late_amount' => $late->total,
-                        'note' => 'late return fee calculated but its destination (owner / GamePek / split) is undecided; not settled',
+                        'note' => 'late return fee calculated; recipient DEFERRED by owner decision (owner / GamePek / split) so it is never charged, credited or split',
                     ],
                     actor: $actor,
                 );

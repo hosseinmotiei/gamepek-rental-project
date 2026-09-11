@@ -147,7 +147,15 @@ class RentalChainOrchestrator
         // would recompute the pre-approval ladder from the signed contract and
         // silently move an approved, delivered or returned rental back to
         // AwaitingFinalApproval.
-        if (in_array($application->state, [
+        // A terminal state (Closed, Rejected, Cancelled) is included for the
+        // same reason, defensively: advance() already returns early for those
+        // and canTransitionTo() refuses to leave them, so this changes no
+        // behaviour -- it stops the pure predicate from ever ANSWERING that a
+        // closed rental belongs on a pre-approval rung, which is the kind of
+        // answer a future caller could act on. Post-close financial work (a
+        // retained note's damage paid after closure, C-59) must never move the
+        // lifecycle.
+        if ($application->state->isTerminal() || in_array($application->state, [
             RentalApplicationState::Approved,
             RentalApplicationState::Active,
             RentalApplicationState::Returned,

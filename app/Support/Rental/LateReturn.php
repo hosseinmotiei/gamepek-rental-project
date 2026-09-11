@@ -31,11 +31,14 @@ use Illuminate\Support\Carbon;
  * the agreed rental period, and whether they extend into a late period is a
  * commercial decision nobody has made. See docs/business/CONFIRMED_DECISIONS.md.
  *
- * WHERE THE MONEY GOES IS UNDECIDED. The 35/65 split is defined on
- * `rental_total`, and no confirmed rule says whether a late fee belongs to the
- * owner, to GamePek, or is split. So this class CALCULATES and nothing more:
- * it writes no ledger entry, touches no settlement and is never added to
- * `rental_total`. RentalSettlementService audits the open question
+ * WHERE THE MONEY GOES IS DEFERRED -- the owner has explicitly postponed that
+ * decision, so it is not merely unwritten, it must not be guessed. The 35/65
+ * split is defined on `rental_total`, and no confirmed rule says whether a late
+ * fee belongs to the owner, to GamePek, or is split. So this class CALCULATES
+ * and nothing more: the figure is a number on a screen and in the audit trail,
+ * never a debt, a balance or a payable. It writes no ledger entry, touches no
+ * settlement and is never added to `rental_total`, and no screen offers an
+ * action to settle it. RentalSettlementService records the deferral
  * (`settlement.late_fee_undistributed`) when it settles a late rental.
  */
 final class LateReturn

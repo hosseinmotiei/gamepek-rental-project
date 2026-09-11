@@ -13,6 +13,7 @@ use App\Models\RentalOperation;
 use App\Models\RentalReservation;
 use App\Models\RentalSettlement;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Otp\OtpProviderInterface;
 use App\Services\Rental\DeviceCustodyService;
@@ -24,6 +25,7 @@ use App\Services\Rental\RentalInspectionService;
 use App\Services\Rental\RentalOperationService;
 use App\Services\Rental\RentalSettlementService;
 use App\Support\Rental\LateReturn;
+use App\Support\Rental\SettlementSplit;
 use Database\Seeders\ContractTemplateSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -270,6 +272,72 @@ class RentalLateReturnTest extends TestCase
 
         $this->assertSame([], app(OperationCustodyReconciler::class)->findings()
             ->where('code', OperationCustodyReconciler::LATE_FEE_WITHOUT_POLICY)->values()->all());
+    }
+
+    public function test_calculating_a_late_fee_has_no_financial_side_effect_at_all(): void
+    {
+        [$application, $reservation, $device] = $this->activeRental('09121000007', 'LATE-G', ownerMobile: '09129000007');
+
+        $this->travelTo($reservation->end_date->copy()->addDays(5));
+        $this->receiveBack($reservation);
+
+        $reservation = $reservation->fresh();
+
+        // Ask for the figure many times, from every angle that exposes it.
+        for ($i = 0; $i < 5; $i++) {
+            $reservation->lateReturn();
+            LateReturn::for($reservation);
+        }
+
+        $this->actingAs($this->admin->fresh())
+            ->get(route('admin.rental-applications.show', $application))->assertOk();
+
+        // RECIPIENT DEFERRED: not one Toman may move because a late fee exists.
+        $this->assertSame(0, WalletTransaction::count(), 'a late fee never touches a wallet');
+        $this->assertSame(0, Wallet::count(), 'no wallet is even created for it');
+        $this->assertSame(0, RentalSettlement::count(), 'calculating a late fee settles nothing');
+
+        // And there is no route that would distribute one.
+        $this->assertSame([], collect(app('router')->getRoutes()->getRoutes())
+            ->map(fn ($route) => $route->getName())
+            ->filter(fn (?string $name) => $name !== null
+                && (str_contains($name, 'late-fee') || str_contains($name, 'late_fee') || str_contains($name, 'late-return')))
+            ->values()->all(), 'no late-fee settlement endpoint may exist while the recipient is deferred');
+
+        $this->assertNotNull($device);
+    }
+
+    public function test_settling_a_late_rental_pays_the_rental_price_only_and_records_the_deferral(): void
+    {
+        [$application, $reservation] = $this->activeRental('09121000008', 'LATE-H', ownerMobile: '09129000008');
+
+        $this->travelTo($reservation->end_date->copy()->addDays(2));
+        $this->receiveBack($reservation);
+
+        $return = RentalOperation::where('rental_reservation_id', $reservation->id)
+            ->where('type', RentalOperationType::CustomerReturn->value)->firstOrFail();
+        app(RentalInspectionService::class)->record($return->refresh(), $this->admin, 'بررسی بازگشت');
+
+        $settlement = app(RentalSettlementService::class)->calculate($application->fresh(), $this->admin);
+
+        $late = $reservation->fresh()->lateReturn();
+        $expected = SettlementSplit::of((int) $reservation->rental_total);
+
+        $this->assertTrue($late->isLate);
+        $this->assertGreaterThan(0, $late->total);
+
+        // The split is taken on the rental price, exactly as if it were on time.
+        $this->assertSame($expected->gross, $settlement->gross_amount);
+        $this->assertSame($expected->ownerShare, $settlement->owner_share);
+        $this->assertSame($expected->gamepekShare, $settlement->gamepek_share);
+        $this->assertNotSame($settlement->gross_amount, $settlement->gross_amount + $late->total);
+
+        // The deferral is recorded rather than resolved.
+        $audit = AuditEvent::where('action', 'settlement.late_fee_undistributed')
+            ->where('resource_id', $reservation->id)->firstOrFail();
+
+        $this->assertStringContainsString('DEFERRED', (string) ($audit->context['note'] ?? ''));
+        $this->assertSame($late->total, $audit->context['late_amount'] ?? null);
     }
 
     public function test_the_reconciler_reports_a_device_released_while_still_with_the_customer(): void

@@ -145,7 +145,9 @@
                 تا زمان بازگشت فیزیکی دستگاه، این دستگاه برای هیچ رزرو دیگری آزاد نمی‌شود.
             </p>
             <p class="text-[11px] text-amber-600 mt-1 leading-6">
-                مقصد مبلغ تأخیر (مالک، گیم‌پک یا تقسیم) هنوز تعیین نشده است؛ این مبلغ در تسویه ۳۵/۶۵ وارد نمی‌شود و به‌صورت خودکار دریافت نمی‌شود.
+                این مبلغ فقط «محاسبه‌شده» است و بدهی ثبت‌شده یا مبلغ قابل واریز نیست:
+                تصمیم درباره دریافت‌کننده مبلغ تأخیر (مالک، گیم‌پک یا تقسیم) به تعویق افتاده است،
+                بنابراین در تسویه ۳۵/۶۵ وارد نمی‌شود، به کیف پول کسی واریز نمی‌شود و اقدام «تسویه تأخیر» وجود ندارد.
             </p>
         </div>
     @endif
@@ -156,14 +158,23 @@
             <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.receive', $application) }}" data-confirm="دریافت سفته از مشتری ثبت شود؟">@csrf
                 <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">ثبت دریافت سفته</button></form>
         @endif
-        @if ($application->state === App\Enums\RentalApplicationState::Returned)
+        @php
+            // C-59: closing a rental does not extinguish an unpaid damage, so
+            // the payment and the note's return home stay available afterwards.
+            // Everything else below is Returned-only.
+            $openForCloseout = in_array($application->state, [
+                App\Enums\RentalApplicationState::Returned,
+                App\Enums\RentalApplicationState::Closed,
+            ], true);
+        @endphp
+        @if ($openForCloseout)
             {{-- A note RETAINED by GamePek is still in GamePek's hands, so the
                  customer can still pay; one handed to the owner is not. --}}
             @if ($damageStatus['status'] === 'unpaid' && ! $noteStatus->isTerminal())
                 <form method="POST" action="{{ route('admin.rental-applications.damage-payment.store', $application) }}" class="flex gap-2" data-confirm="پرداخت خسارت توسط مشتری ثبت شود؟">@csrf
                     <input name="payment_reference" required maxlength="100" placeholder="شناسه پرداخت" dir="ltr" class="border border-gray-200 rounded-xl px-3 py-2 text-xs">
                     <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">ثبت پرداخت خسارت</button></form>
-                @unless ($noteStatus->isResolved())
+                @if (! $noteStatus->isResolved() && $application->state === App\Enums\RentalApplicationState::Returned)
                     @if ($application->reservation?->device?->isOwnedByGamePek())
                         <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.retain', $application) }}" data-confirm="مشتری خسارت را پرداخت نکرده است؛ سفته نزد گیم‌پک بماند؟">@csrf
                             <button class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-4 py-2 rounded-xl">نگهداری سفته نزد گیم‌پک</button></form>
@@ -171,26 +182,36 @@
                         <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.transfer', $application) }}" data-confirm="مشتری خسارت را پرداخت نکرده است؛ سفته به مالک تحویل شود؟">@csrf
                             <button class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-4 py-2 rounded-xl">تحویل سفته به مالک</button></form>
                     @endif
-                @endunless
+                @endif
             @endif
             @if (in_array($noteStatus, [App\Enums\GuaranteeNoteStatus::HeldByGamePek, App\Enums\GuaranteeNoteStatus::RetainedByGamePek], true)
                 && in_array($damageStatus['status'], ['no_damage', 'paid'], true))
                 <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.return', $application) }}" data-confirm="سفته به مشتری بازگردانده شود؟">@csrf
                     <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">بازگرداندن سفته به مشتری</button></form>
             @endif
-            @unless ($application->reservation?->settlement?->isCredited())
-                <form method="POST" action="{{ route('admin.rental-applications.settlement.finalize', $application) }}" data-confirm="سهم مالک به کیف پول او واریز شود؟">@csrf
-                    <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">واریز سهم مالک</button></form>
-            @endunless
-            @if ($closureReadiness['ready'] ?? false)
-                <form method="POST" action="{{ route('admin.rental-applications.close', $application) }}" data-confirm="اجاره بسته شود؟">@csrf
-                    <button class="bg-brandBlue text-white text-xs font-bold px-4 py-2 rounded-xl">بستن اجاره</button></form>
+            {{-- Settlement and closure are Returned-only: a closed rental is
+                 already settled and closed, and a post-close damage payment
+                 must not re-open either. --}}
+            @if ($application->state === App\Enums\RentalApplicationState::Returned)
+                @unless ($application->reservation?->settlement?->isCredited())
+                    <form method="POST" action="{{ route('admin.rental-applications.settlement.finalize', $application) }}" data-confirm="سهم مالک به کیف پول او واریز شود؟">@csrf
+                        <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">واریز سهم مالک</button></form>
+                @endunless
+                @if ($closureReadiness['ready'] ?? false)
+                    <form method="POST" action="{{ route('admin.rental-applications.close', $application) }}" data-confirm="اجاره بسته شود؟">@csrf
+                        <button class="bg-brandBlue text-white text-xs font-bold px-4 py-2 rounded-xl">بستن اجاره</button></form>
+                @endif
             @endif
         @endif
     </div>
     <p class="text-[11px] text-gray-400 mt-3 leading-6">سفته پول یا ودیعه نیست و در تسویه محاسبه نمی‌شود. هر اقدام پیش از ثبت، شرایط خود را در سرور بررسی می‌کند.</p>
     @if ($noteStatus === App\Enums\GuaranteeNoteStatus::RetainedByGamePek)
-        <p class="text-[11px] text-amber-700 leading-6">سفته این اجاره نزد گیم‌پک مانده است؛ اگر مشتری بعداً خسارت را پرداخت کند، سفته به او بازگردانده می‌شود.</p>
+        <p class="text-[11px] text-amber-700 leading-6">
+            سفته این اجاره نزد گیم‌پک مانده است؛ اگر مشتری بعداً خسارت را پرداخت کند، سفته به او بازگردانده می‌شود.
+            @if ($application->state === App\Enums\RentalApplicationState::Closed)
+                بسته‌شدن اجاره این امکان را از بین نمی‌برد و ثبت پرداخت، وضعیت اجاره را تغییر نمی‌دهد.
+            @endif
+        </p>
     @endif
     @endcan
 </x-admin.panel>
