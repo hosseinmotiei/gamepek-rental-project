@@ -350,3 +350,55 @@ were the customer's own delivery status, when no such customer-facing
 delivery process exists in the codebase at all. This is judged unsafe/
 misleading rather than merely incomplete, so nothing was added to the
 customer-facing Rental Application page.
+
+## 12. Delivery / customer custody feasibility analysis -- not implemented, and why
+
+A task requested adding the `gamepek -> customer`, `customer -> gamepek` and
+`gamepek -> owner` custody legs, a delivery `RentalOperation` type, and a
+customer return operation type, on the premise that this could be done as
+"structural scaffolding" without deciding policy. **It cannot, and the
+project's own code already says so:**
+
+- `App\Enums\RentalOperationType`'s docblock, verbatim: *"Delivery, customer
+  return, owner return and inspection are real future operations, and they
+  are deliberately ABSENT rather than declared-and-disabled: an enum case
+  that cannot be produced is a promise the code does not keep, and the audit
+  found that pattern in this project already."* Adding an inert
+  `CustomerDelivery`/`CustomerReturn` case is exactly the pattern this
+  comment names and rejects, not new scaffolding.
+- `App\Enums\CustodyActor`'s docblock, verbatim: *"Customer is declared
+  because custody genuinely has three parties and a two-valued column would
+  have to be widened later under live data. No customer transfer is
+  executable in this phase -- see CustodyTransferType."* The actor
+  *vocabulary* was deliberately future-proofed already (`CustodyActor::Customer`
+  exists today); the project stopped precisely at the line between "an actor
+  can be named" and "a transfer type makes that name executable," and that
+  line is exactly where a policy decision is required.
+- The `device_custody_actor_pair_ck` CHECK constraint (`database/migrations/
+  2026_09_11_000002_add_custody_integrity_constraints.php`) only constrains
+  rows where `transfer_type = 'owner_to_gamepek'`; for any other type value
+  it is vacuously satisfied. Adding a new `CustodyTransferType` case safely
+  -- consistent with this codebase's own "the service being the only writer
+  is a fact about today's code, not an invariant" philosophy -- would require
+  a new constraint clause encoding the correct actor pair for that leg. That
+  is not a structural decision; it is an answer to "may GamePek release a
+  device to a customer, and under what evidence," which is exactly:
+  - `CONFIRMED_DECISIONS.md` §4.1: *"Releasing a device from GamePek custody
+    without a completed rental — no such transition exists"* (undecided
+    business policy, listed among items requiring an owner decision);
+  - `CONFIRMED_DECISIONS.md` §4.2: whether a custody handover needs a
+    receipt or signature (open legal gate, and it applies to any handover
+    leg, not only the one that exists today).
+- Device allocation itself is a further precondition (`reservation.device_id`
+  is populated only by a human's manual `attachDevice()` call, per the
+  device-allocation audit) -- a delivery/return leg would depend on it being
+  reliably true for a given reservation, and the allocation *policy* (which
+  device, chosen by whom) remains undecided (§10 above).
+
+**Conclusion:** every downstream item in that task (delivery/return
+operation types, their services, admin screens, customer authorization,
+customer-facing status, customer custody actions, reconciler coverage) is
+gated on the same undecided business/legal questions this domain has
+consistently refused to guess at elsewhere. Nothing was added. This
+paragraph is the record of that determination, so it does not need
+re-deriving next time the question comes up.
