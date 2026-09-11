@@ -103,6 +103,38 @@ reservation and its operation can never name two different consoles. The
 allocation *policy* is unchanged: still an explicit human choice, never
 automatic.
 
+### 3.1 Device-level overlap safety (implemented; still not a selection policy)
+
+`attachDevice()` also refuses to attach a device that is already committed to
+a **different** blocking reservation whose dates overlap the one being
+attached to. This is a **safety check, not a selection rule**: it never
+chooses a device, ranks candidates, or decides who gets one — it only refuses
+an attachment that would double-book a specific physical unit. It:
+
+- locks the candidate `Device` row (`lockForUpdate()`) so two concurrent
+  attachments naming the same device serialise, exactly like two racing
+  payments already serialise on the product row in
+  `RentalReservationService::materialiseAfterPayment()`;
+- reuses the one existing overlap predicate
+  (`RentalReservation::scopeOverlapping()`) and the one existing
+  blocking-state definition (`scopeBlocking()`) with a `device_id` filter
+  layered on top — there is still exactly one overlap concept in the
+  codebase, and product-level availability (`RentalAvailabilityService`) is
+  untouched;
+- is audited as `operation.device_attach_denied` (`result: denied`) when it
+  refuses, distinct from the existing `operation.device_attached` success
+  event.
+
+`Admin\OperationController::show()`'s candidate list also excludes devices
+that would obviously conflict with the reservation's dates, as a read-side
+convenience — `attachDevice()` remains the sole authority; the candidate
+list is not a security boundary.
+
+**Still undecided, unchanged by this:** which device to prefer when several
+are free (GamePek-first vs. owner-rotation vs. condition), what happens after
+a failed pickup, and whether a product can even have more than one
+concurrently-blocking reservation at all (today it cannot — see §10).
+
 ---
 
 ## 4. GamePek-owned devices
@@ -215,6 +247,7 @@ contradiction fixable by a human. Admin reads it at
 
 Actions recorded through the existing `AuditLogger`: `operation.created`,
 `operation.awaiting_device_allocation`, `operation.device_attached`,
+`operation.device_attach_denied` (device-overlap refusal, `result: denied`),
 `operation.scheduled`, `operation.started`, `operation.completed`,
 `operation.failed`, `custody.requested`, `custody.transferred`,
 `custody.acknowledged`, `custody.history_viewed`.
@@ -260,7 +293,20 @@ belonging to another owner.
 
 ## 10. Open gates relevant to this domain
 
-- **Device allocation rule** — undecided; nothing chooses a device
+- **Device allocation rule** — undecided; nothing chooses a device. §3.1's
+  overlap check only refuses an unsafe manual choice — it does not decide
+  GamePek-first vs. owner-rotation vs. condition-based selection, and does
+  not make selection automatic
+- **Owner fairness / rotation** — undecided
+- **Condition-based selection** — undecided; `devices.condition` is free text
+- **Product capacity model** — undecided; `RentalAvailabilityService` treats
+  each product as one concurrently-blockable slot regardless of how many
+  `Device` rows are registered for it, so today two blocking reservations
+  cannot even coexist for one product. Whether that should change for a
+  multi-unit product, and how, is unresolved
+- **Allocation timing relative to final approval** — undecided; today a
+  device may be attached as soon as the pickup task exists (right after
+  payment), long before `Approved`. Nothing gates it on approval
 - **What follows a failed pickup** — undecided; the failure is recorded and
   nothing else happens
 - **Receipt / signature requirements for a handover** — open legal gate;

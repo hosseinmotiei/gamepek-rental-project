@@ -57,7 +57,7 @@ repository has a **test suite of 171 test methods**.
 | Wallet backend (`WalletService`, persisted balance + immutable ledger) | Implemented — nothing calls `credit()`/`debit()` yet |
 | Wallet-driven settlement, payout, deposit, refund, damage charges | **Not implemented** |
 | Customer profile wallet tab | Still **frontend `localStorage` prototype**, not connected to the real backend |
-| Device allocation to a reservation | **Not implemented — undecided policy (section 10.3b)** |
+| Device allocation to a reservation | Manual admin attachment implemented (`attachDevice()`), now with device-level overlap safety — **selection policy itself remains undecided (section 10.3b)** |
 | Inspection / delivery / customer return / owner return / damage | Not implemented |
 | Receipt or signature for a custody handover | **Not implemented — open legal gate** |
 
@@ -544,6 +544,14 @@ Do not resolve any of these by choosing. Ask.
    explicitly on the admin operations screen.
    `RentalOperationService::attachDevice()` validates the device it is GIVEN;
    there is deliberately no overload that finds one. Do not add one.
+   **Since then:** `attachDevice()` also refuses (with an audited
+   `operation.device_attach_denied`) a device already committed to a
+   *different* blocking reservation with overlapping dates — a safety check
+   against double-booking one physical unit, not a selection policy. It
+   changes nothing about which device a human should pick, and does not touch
+   product-level availability/capacity (`RentalAvailabilityService` still
+   treats one product as one concurrently-blockable slot regardless of
+   device count — see `docs/operations/OPERATIONS_AND_CUSTODY.md` §10).
 3c. **What follows a failed pickup.** Recording a failure does nothing else:
    no refund, no owner penalty, no replacement device, no reservation
    cancellation, no suspension. Every one of those is undecided — see

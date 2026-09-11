@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditEvent;
 use App\Models\Device;
 use App\Models\RentalOperation;
+use App\Models\RentalReservation;
 use App\Services\Audit\AuditLogger;
 use App\Services\Rental\DeviceCustodyService;
 use App\Services\Rental\OperationCustodyReconciler;
@@ -71,12 +72,34 @@ class OperationController extends Controller
         // Candidate devices for an unallocated task. This is a LIST for a human
         // to choose from -- nothing here ranks, defaults or preselects, because
         // the allocation rule is undecided (POLICY GATE).
+        //
+        // Read-side safety aid only: devices already committed to another
+        // blocking reservation for an overlapping date range are excluded so
+        // an obviously conflicting device is not even offered. This is NOT the
+        // security boundary -- RentalOperationService::attachDevice() re-checks
+        // and refuses the same conflict authoritatively, under a lock, even if
+        // this list were somehow bypassed. Reuses the one existing overlap
+        // predicate and blocking-state definition (RentalReservation); no
+        // second overlap concept, no ranking, no automatic selection.
         $candidates = collect();
 
-        if (! $operation->hasDevice() && ! $operation->isTerminal()) {
+        if (! $operation->hasDevice() && ! $operation->isTerminal() && $operation->reservation) {
+            $reservation = $operation->reservation;
+
+            $conflictingDeviceIds = RentalReservation::overlapping(
+                $reservation->product_id,
+                $reservation->start_date->toDateString(),
+                $reservation->end_date->toDateString(),
+            )
+                ->where('id', '!=', $reservation->id)
+                ->whereNotNull('device_id')
+                ->blocking()
+                ->pluck('device_id');
+
             $candidates = Device::with('owner.user')
-                ->where('product_id', $operation->reservation?->product_id)
+                ->where('product_id', $reservation->product_id)
                 ->rentable()
+                ->whereNotIn('id', $conflictingDeviceIds)
                 ->orderBy('id')
                 ->get();
         }

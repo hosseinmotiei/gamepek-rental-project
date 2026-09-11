@@ -26,8 +26,12 @@ use Illuminate\Support\Facades\DB;
  *  - It never chooses a device. Which free device serves a paid reservation is
  *    an undecided policy (see the rental_reservations device_id migration).
  *    attachDevice() takes the device a human named and validates it; there is
- *    no "pick the first approved one" path, on purpose.
+ *    no "pick the first approved one" path, on purpose. What it DOES refuse is
+ *    a human naming a device that is already committed to another blocking
+ *    reservation for an overlapping date range -- a safety check, not a
+ *    selection policy: it never picks a device, it only refuses an unsafe one.
  *
+
  *  - It acts on nothing when a pickup fails. No refund, no owner penalty, no
  *    replacement, no reservation cancellation, no suspension. All of those are
  *    undecided business policy. The failure is recorded, audited and surfaced
@@ -136,6 +140,36 @@ class RentalOperationService
      */
     public function attachDevice(RentalOperation $operation, Device $device, User $actor): RentalOperation
     {
+        $reservation = $operation->reservation()->firstOrFail();
+
+        // Pre-transaction, unlocked check for the common (non-racing) case,
+        // so its denial can be audited durably. An audit row written INSIDE
+        // the transaction below and then rolled back by the throw that
+        // follows it would simply vanish -- exactly the reasoning
+        // ContractService::accept()/sign() already document for the same
+        // shape of problem in this codebase. The lock-protected re-check
+        // inside the transaction (below) is the race-safety net; a request
+        // that loses that race is refused without a second audit row, the
+        // same way ContractService's inner lock does not re-audit its
+        // outer, already-audited denial.
+        if ($this->deviceOverlapsAnotherBlockingReservation($device->id, $reservation)) {
+            AuditLogger::log(
+                action: 'operation.device_attach_denied',
+                resourceType: 'RentalOperation',
+                resourceId: $operation->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: [
+                    'operation_number' => $operation->operation_number,
+                    'device_id' => $device->id,
+                    'device_serial_mask' => $device->maskedSerial(),
+                    'reason' => 'device_overlaps_another_blocking_reservation',
+                ],
+                actor: $actor,
+            );
+
+            throw new \RuntimeException('این دستگاه برای بازه زمانی این رزرو در دسترس نیست.');
+        }
+
         return DB::transaction(function () use ($operation, $device, $actor) {
             $locked = RentalOperation::where('id', $operation->id)->lockForUpdate()->firstOrFail();
 
@@ -153,6 +187,13 @@ class RentalOperationService
 
             $reservation = $locked->reservation()->lockForUpdate()->firstOrFail();
 
+            // Lock the candidate device row itself: two concurrent attachDevice()
+            // calls naming the SAME device for two DIFFERENT (and possibly
+            // conflicting) reservations must serialise here, the same way two
+            // racing payments already serialise on the product row in
+            // RentalReservationService::materialiseAfterPayment().
+            $device = Device::where('id', $device->id)->lockForUpdate()->firstOrFail();
+
             // The physical device must actually be an instance of the catalog
             // item the customer paid for.
             if ($device->product_id !== $reservation->product_id) {
@@ -168,6 +209,15 @@ class RentalOperationService
                 // is asserted anyway rather than assumed, because everything
                 // below depends on the owner being real.
                 throw new \RuntimeException('مالک این دستگاه مشخص نیست.');
+            }
+
+            // Race guard: re-check under the device lock. Reuses the same
+            // predicate as the pre-check above -- no second overlap concept,
+            // and this does not touch product-level availability/capacity
+            // semantics (RentalAvailabilityService and scopeOverlapping()'s
+            // product-level call site are untouched).
+            if ($this->deviceOverlapsAnotherBlockingReservation($device->id, $reservation)) {
+                throw new \RuntimeException('این دستگاه برای بازه زمانی این رزرو در دسترس نیست.');
             }
 
             $locked->device_id = $device->id;
@@ -421,5 +471,29 @@ class RentalOperationService
     {
         return ($e->errorInfo[1] ?? null) === 1062
             && str_contains((string) $e->getMessage(), 'rental_operations_reservation_type_uq');
+    }
+
+    /**
+     * Is $deviceId already committed to a DIFFERENT blocking reservation that
+     * overlaps $reservation's own dates?
+     *
+     * Reuses the one existing overlap predicate
+     * (RentalReservation::scopeOverlapping()) and the one existing
+     * blocking-state definition (scopeBlocking()) -- this only layers a
+     * device_id filter on top of both, so there is still exactly one overlap
+     * concept in the codebase. $reservation itself is excluded so a device
+     * already attached to it is never flagged as conflicting with itself.
+     */
+    private function deviceOverlapsAnotherBlockingReservation(int $deviceId, RentalReservation $reservation): bool
+    {
+        return RentalReservation::overlapping(
+            $reservation->product_id,
+            $reservation->start_date->toDateString(),
+            $reservation->end_date->toDateString(),
+        )
+            ->where('device_id', $deviceId)
+            ->where('id', '!=', $reservation->id)
+            ->blocking()
+            ->exists();
     }
 }
