@@ -65,7 +65,7 @@
             <h1 class="font-bold text-gray-800 text-sm">{{ $pageTitle }}</h1>
         </div>
         <div class="flex items-center gap-4">
-            <a href="{{ route('products.search') }}" class="text-gray-600"><i class="fa-solid fa-magnifying-glass text-lg"></i></a>
+            <a aria-label="جستجو" href="{{ route('products.search') }}" class="text-gray-600"><i class="fa-solid fa-magnifying-glass text-lg"></i></a>
         </div>
     </div>
 
@@ -268,7 +268,7 @@
     <div class="bg-white w-full rounded-t-2xl flex flex-col transform translate-y-full transition-transform duration-300 max-h-[80vh]" id="mobile-sort-inner">
         <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
             <h3 class="font-bold text-gray-800 text-sm">مرتب‌سازی بر اساس</h3>
-            <button onclick="closeMobileSort()" class="text-gray-400 hover:text-gray-800"><i class="fa-solid fa-xmark text-lg"></i></button>
+            <button type="button" aria-label="بستن" onclick="closeMobileSort()" class="text-gray-400 hover:text-gray-800"><i class="fa-solid fa-xmark text-lg"></i></button>
         </div>
         <div class="flex flex-col p-2 gap-1 pb-6 overflow-y-auto hide-scrollbar">
             @foreach($sortLabels as $key => $label)
@@ -288,7 +288,7 @@
         @if($hasActiveFilter)
         <a href="{{ $buildUrl($clearFilters) }}" class="text-xs font-bold text-cyan-500 mr-auto ml-4">حذف همه</a>
         @endif
-        <button onclick="closeMobileFilter()" class="text-gray-500 hover:text-gray-800"><i class="fa-solid fa-xmark text-lg"></i></button>
+        <button type="button" aria-label="بستن فیلترها" onclick="closeMobileFilter()" class="text-gray-500 hover:text-gray-800"><i class="fa-solid fa-xmark text-lg"></i></button>
     </div>
 
     <div class="flex-1 overflow-y-auto px-4 py-2 hide-scrollbar">

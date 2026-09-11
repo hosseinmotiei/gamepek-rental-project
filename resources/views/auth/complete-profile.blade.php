@@ -29,7 +29,7 @@
                 <img src="{{ asset('images/logos/logo-horizontal.png') }}" alt="GamePek" class="h-9 w-auto" onerror="this.classList.add('hidden'); this.nextElementSibling.classList.remove('hidden');">
                 <span class="hidden text-2xl font-black tracking-tight text-brandDark">گیم‌<span class="text-brandBlue">پک</span></span>
             </a>
-            <a href="{{ route('home') }}" class="w-8 h-8 flex items-center justify-center text-gray-800 hover:bg-gray-100 rounded-full transition-colors">
+            <a aria-label="بازگشت به صفحه اصلی" href="{{ route('home') }}" class="w-8 h-8 flex items-center justify-center text-gray-800 hover:bg-gray-100 rounded-full transition-colors">
                 <i class="fa-solid fa-arrow-right"></i>
             </a>
         </header>
@@ -41,7 +41,7 @@
             <div id="error-box" class="hidden mb-4 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600"></div>
 
             <div class="relative mb-4">
-                <input type="text" id="name-input" name="full_name"
+                <input aria-label="نام و نام خانوادگی" type="text" id="name-input" name="full_name"
                        class="peer w-full border border-gray-300 rounded-xl px-4 pt-6 pb-2 text-sm text-gray-800 outline-none focus:border-brandBlue focus:border-2 transition-all placeholder-transparent"
                        placeholder="نام و نام خانوادگی" autocomplete="name" autofocus>
                 <label class="absolute right-4 top-4 text-gray-400 text-xs transition-all pointer-events-none">نام و نام خانوادگی <span class="text-red-400">*</span></label>

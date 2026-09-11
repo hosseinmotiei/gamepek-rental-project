@@ -24,7 +24,7 @@
                 <h2 class="text-lg font-black text-gray-800">{{ $device->product?->title_fa ?? '—' }}</h2>
                 <p class="text-xs text-gray-500 mt-1">شناسه دستگاه: <span class="font-mono" dir="ltr">{{ $device->id }}</span></p>
             </div>
-            <span class="text-[11px] border rounded-full px-3 py-1 {{ $badge }}">{{ $device->state->label() }}</span>
+            <span class="text-[11px] border rounded-full px-3 py-1 whitespace-nowrap {{ $badge }}">{{ $device->state->label() }}</span>
         </div>
 
         <dl class="text-sm divide-y divide-gray-100">
@@ -105,7 +105,7 @@
 
             <form method="POST" action="{{ route('admin.devices.reject', $device) }}">
                 @csrf
-                <input type="text" name="reason" required placeholder="دلیل رد"
+                <input aria-label="دلیل رد" type="text" name="reason" required placeholder="دلیل رد"
                        class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue mb-2">
                 @error('reason')<p class="text-xs text-red-600 mb-2">{{ $message }}</p>@enderror
                 <button type="submit" data-confirm="این دستگاه رد شود؟"

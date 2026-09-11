@@ -39,7 +39,7 @@
             </div>
             <div class="flex justify-between py-2.5">
                 <dt class="text-gray-500">سریال</dt>
-                <dd class="text-gray-700 text-xs font-mono" dir="ltr">{{ $operation->deviceLabel() }}</dd>
+                <dd class="text-gray-700 text-xs {{ $operation->hasDevice() ? 'font-mono' : '' }}" dir="{{ $operation->hasDevice() ? 'ltr' : 'rtl' }}">{{ $operation->deviceLabel() }}</dd>
             </div>
             <div class="flex justify-between py-2.5">
                 <dt class="text-gray-500">بازه اجاره</dt>

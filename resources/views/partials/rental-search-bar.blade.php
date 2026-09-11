@@ -59,7 +59,7 @@
             <span class="flex flex-col min-w-0 flex-1">
                 <span class="text-[10px] text-gray-400 mb-0.5">از تاریخ</span>
                 <input type="hidden" name="from" value="{{ $from }}">
-                <input type="text" readonly data-jdp-display placeholder="انتخاب تاریخ"
+                <input type="text" readonly data-jdp-display aria-label="از تاریخ" placeholder="انتخاب تاریخ"
                        class="w-full bg-transparent text-sm font-bold text-gray-800 outline-none cursor-pointer">
             </span>
         </div>
@@ -73,7 +73,7 @@
             <span class="flex flex-col min-w-0 flex-1">
                 <span class="text-[10px] text-gray-400 mb-0.5">تا تاریخ</span>
                 <input type="hidden" name="to" value="{{ $to }}">
-                <input type="text" readonly data-jdp-display placeholder="انتخاب تاریخ"
+                <input type="text" readonly data-jdp-display aria-label="تا تاریخ" placeholder="انتخاب تاریخ"
                        class="w-full bg-transparent text-sm font-bold text-gray-800 outline-none cursor-pointer">
             </span>
         </div>

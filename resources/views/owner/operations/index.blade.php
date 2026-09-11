@@ -42,9 +42,9 @@
                 <div class="flex items-start justify-between gap-3">
                     <div>
                         <p class="text-sm font-bold text-gray-800">{{ $operation->device?->product?->title_fa ?? '—' }}</p>
-                        <p class="text-xs text-gray-500 mt-1 font-mono" dir="ltr">{{ $operation->deviceLabel() }}</p>
+                        <p class="text-xs text-gray-500 mt-1 {{ $operation->hasDevice() ? 'font-mono' : '' }}" dir="{{ $operation->hasDevice() ? 'ltr' : 'rtl' }}">{{ $operation->deviceLabel() }}</p>
                     </div>
-                    <span class="text-[11px] border rounded-full px-3 py-1 {{ $badge($operation->state) }}">{{ $operation->state->label() }}</span>
+                    <span class="text-[11px] border rounded-full px-3 py-1 whitespace-nowrap {{ $badge($operation->state) }}">{{ $operation->state->label() }}</span>
                 </div>
             </a>
         @empty

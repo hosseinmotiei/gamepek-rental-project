@@ -4,7 +4,7 @@
 <header class="bg-white border-b border-gray-200 px-3 md:px-6 py-3.5 flex items-center justify-between shrink-0 z-20">
     <div class="flex items-center gap-4">
         {{-- Mobile sidebar toggle --}}
-        <button onclick="toggleSidebar()" class="lg:hidden text-gray-500 hover:text-gray-800 p-1">
+        <button type="button" onclick="toggleSidebar()" aria-label="باز و بسته کردن منو" aria-controls="sidebar" class="lg:hidden text-gray-500 hover:text-gray-800 p-2 -m-1">
             <i class="fa-solid fa-bars text-lg"></i>
         </button>
 

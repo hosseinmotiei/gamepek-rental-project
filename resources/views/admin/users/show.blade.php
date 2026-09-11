@@ -218,10 +218,17 @@ $statusLabels = [
         <div class="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
             <h3 class="font-bold text-gray-800 text-sm mb-3">دسترسی ادمین</h3>
 
+            @php
+                // The same Persian role names the admin topbar shows -- never the raw key.
+                $roleLabel = fn (string $name) => [
+                    'super_admin' => 'سوپر ادمین', 'admin' => 'مدیر', 'product_manager' => 'مدیر محصولات',
+                    'order_manager' => 'مدیر سفارش‌ها', 'content_manager' => 'مدیر محتوا', 'support' => 'پشتیبانی',
+                ][$name] ?? $name;
+            @endphp
             @if($user->roles->isNotEmpty())
             <div class="flex flex-wrap gap-1.5 mb-3">
                 @foreach($user->roles as $role)
-                <span class="text-[10px] font-medium bg-brandLightBlue text-brandBlue px-2.5 py-1 rounded-full">{{ $role->name }}</span>
+                <span class="text-[10px] font-medium bg-brandLightBlue text-brandBlue px-2.5 py-1 rounded-full">{{ $roleLabel($role->name) }}</span>
                 @endforeach
             </div>
             @else
@@ -233,10 +240,10 @@ $statusLabels = [
                 <form method="POST" action="{{ route('admin.users.update-role', $user) }}" class="flex items-center gap-2"
                       onsubmit="return confirm('نقش این کاربر تغییر کند؟')">
                     @csrf @method('PATCH')
-                    <select name="role" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
+                    <select aria-label="نقش کاربر" name="role" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
                         <option value="">بدون دسترسی ادمین</option>
                         @foreach($availableRoles as $role)
-                        <option value="{{ $role->name }}" {{ $user->hasRole($role->name) ? 'selected' : '' }}>{{ $role->name }}</option>
+                        <option value="{{ $role->name }}" {{ $user->hasRole($role->name) ? 'selected' : '' }}>{{ $roleLabel($role->name) }}</option>
                         @endforeach
                     </select>
                     <button type="submit" class="bg-brandBlue text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-blue-700 transition-colors shrink-0">ثبت</button>
@@ -258,17 +265,17 @@ $statusLabels = [
                 @csrf @method('PATCH')
 
                 <div>
-                    <input type="email" name="email" value="{{ old('email', $user->email) }}" placeholder="ایمیل (مثال: name@gmail.com)" dir="ltr"
+                    <input aria-label="ایمیل" type="email" name="email" value="{{ old('email', $user->email) }}" placeholder="ایمیل (مثال: name@gmail.com)" dir="ltr"
                            class="w-full border {{ $errors->has('email') ? 'border-red-400' : 'border-gray-200' }} rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
                     @error('email')<p class="text-red-500 text-[10px] mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <input type="password" name="password" placeholder="رمز عبور جدید (حداقل ۸ کاراکتر)" dir="ltr"
+                    <input aria-label="رمز عبور جدید" type="password" name="password" placeholder="رمز عبور جدید (حداقل ۸ کاراکتر)" dir="ltr"
                            class="w-full border {{ $errors->has('password') ? 'border-red-400' : 'border-gray-200' }} rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
                     @error('password')<p class="text-red-500 text-[10px] mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <input type="password" name="password_confirmation" placeholder="تکرار رمز عبور" dir="ltr"
+                    <input aria-label="تکرار رمز عبور" type="password" name="password_confirmation" placeholder="تکرار رمز عبور" dir="ltr"
                            class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
                 </div>
 

@@ -581,7 +581,7 @@
         </header>
         <div class="p-5 space-y-3">
             @forelse ($application->transitions->sortByDesc('created_at') as $transition)
-                <div class="flex items-center justify-between gap-3 text-xs md:text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
+                <div class="flex items-center flex-wrap justify-between gap-x-3 gap-y-0.5 text-xs md:text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
                     <span class="flex items-center gap-2 text-gray-600">
                         <i class="fa-solid fa-circle text-[6px] text-brandBlue"></i>
                         {{ $stateLabel(RentalApplicationState::from($transition->to_state)) }}

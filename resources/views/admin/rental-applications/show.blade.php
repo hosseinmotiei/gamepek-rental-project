@@ -52,7 +52,7 @@
         <form method="POST" action="{{ route('admin.rental-applications.approve', $application) }}" class="mb-4"
               data-confirm="تأیید نهایی این درخواست اجاره؟">
             @csrf
-            <textarea name="note" rows="2" placeholder="یادداشت (اختیاری)"
+            <textarea aria-label="یادداشت (اختیاری)" name="note" rows="2" placeholder="یادداشت (اختیاری)"
                       class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-brandBlue mb-2"></textarea>
             <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">
                 <i class="fa-solid fa-circle-check ml-1"></i> تأیید نهایی
@@ -62,7 +62,7 @@
         <form method="POST" action="{{ route('admin.rental-applications.reject', $application) }}"
               data-confirm="رد این درخواست اجاره؟">
             @csrf
-            <textarea name="reason" rows="2" required placeholder="دلیل رد (الزامی)"
+            <textarea aria-label="دلیل رد (الزامی)" name="reason" rows="2" required placeholder="دلیل رد (الزامی)"
                       class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-brandBlue mb-2"></textarea>
             <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">
                 <i class="fa-solid fa-ban ml-1"></i> رد درخواست
@@ -172,7 +172,7 @@
                  customer can still pay; one handed to the owner is not. --}}
             @if ($damageStatus['status'] === 'unpaid' && ! $noteStatus->isTerminal())
                 <form method="POST" action="{{ route('admin.rental-applications.damage-payment.store', $application) }}" class="flex gap-2" data-confirm="پرداخت خسارت توسط مشتری ثبت شود؟">@csrf
-                    <input name="payment_reference" required maxlength="100" placeholder="شناسه پرداخت" dir="ltr" class="border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                    <input aria-label="شناسه پرداخت" name="payment_reference" required maxlength="100" placeholder="شناسه پرداخت" dir="ltr" class="border border-gray-200 rounded-xl px-3 py-2 text-xs">
                     <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">ثبت پرداخت خسارت</button></form>
                 @if (! $noteStatus->isResolved() && $application->state === App\Enums\RentalApplicationState::Returned)
                     @if ($application->reservation?->device?->isOwnedByGamePek())
@@ -301,7 +301,7 @@
             <div><dt class="text-xs text-gray-400">دستگاه</dt><dd class="text-gray-800">{{ $reservation->product?->title_fa ?: '—' }}</dd></div>
             <div><dt class="text-xs text-gray-400">بازه</dt><dd class="text-gray-700" dir="ltr">{{ $reservation->start_date->format('Y/m/d') }} — {{ $reservation->end_date->format('Y/m/d') }}</dd></div>
             <div><dt class="text-xs text-gray-400">مدت</dt><dd class="text-gray-700">{{ persian_number($reservation->days) }} روز</dd></div>
-            <div><dt class="text-xs text-gray-400">وضعیت</dt><dd><x-admin.status-badge color="gray" :label="$reservation->state->value" /></dd></div>
+            <div><dt class="text-xs text-gray-400">وضعیت</dt><dd><x-admin.status-badge color="gray" :label="$reservation->state->label()" /></dd></div>
             <div><dt class="text-xs text-gray-400">اجاره‌بها</dt><dd class="text-gray-700">{{ persian_number(number_format($reservation->rental_total)) }} تومان</dd></div>
             <div><dt class="text-xs text-gray-400">پرداختی</dt><dd class="font-bold text-gray-800">{{ persian_number(number_format($reservation->payable_now)) }} تومان</dd></div>
             {{-- No cash deposit exists (confirmed). The product's legacy
@@ -316,7 +316,7 @@
     <div class="flex items-center justify-between mb-4">
         <h2 class="font-bold text-gray-800 text-sm">ضمانت</h2>
         @if($application->guarantee)
-            <x-admin.status-badge :color="$application->guarantee->state->value === 'verified' ? 'green' : 'gray'" :label="$application->guarantee->state->value" />
+            <x-admin.status-badge :color="$application->guarantee->state->value === 'verified' ? 'green' : 'gray'" :label="$application->guarantee->state->label()" />
         @endif
     </div>
 
@@ -362,14 +362,14 @@
             <form method="POST" action="{{ route('admin.rental-applications.guarantee.verify', $application) }}"
                   data-confirm="تأیید دستی ضمانت؟">
                 @csrf
-                <input type="text" name="note" placeholder="یادداشت (اختیاری)"
+                <input aria-label="یادداشت (اختیاری)" type="text" name="note" placeholder="یادداشت (اختیاری)"
                        class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-brandBlue mb-2">
                 <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">تأیید ضمانت</button>
             </form>
             <form method="POST" action="{{ route('admin.rental-applications.guarantee.reject', $application) }}"
                   data-confirm="رد ضمانت؟">
                 @csrf
-                <input type="text" name="reason" required placeholder="دلیل رد (الزامی)"
+                <input aria-label="دلیل رد (الزامی)" type="text" name="reason" required placeholder="دلیل رد (الزامی)"
                        class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-brandBlue mb-2">
                 <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">رد ضمانت</button>
             </form>
@@ -383,7 +383,7 @@
         <h2 class="font-bold text-gray-800 text-sm">قرارداد</h2>
         @if($application->contract)
             <x-admin.status-badge :color="match($application->contract->state->value) { 'signed' => 'green', 'void' => 'red', default => 'gray' }"
-                                  :label="$application->contract->state->value" />
+                                  :label="$application->contract->state->label()" />
         @endif
     </div>
 
@@ -421,7 +421,7 @@
         <form method="POST" action="{{ route('admin.rental-applications.contract.void', $application) }}"
               data-confirm="ابطال قرارداد؟ این اقدام برگشت‌پذیر نیست.">
             @csrf
-            <input type="text" name="reason" required placeholder="دلیل ابطال (الزامی)"
+            <input aria-label="دلیل ابطال (الزامی)" type="text" name="reason" required placeholder="دلیل ابطال (الزامی)"
                    class="w-full md:w-1/2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-brandBlue mb-2">
             <button type="submit" class="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">ابطال قرارداد</button>
         </form>
@@ -449,8 +449,8 @@
             </x-slot:head>
             @foreach($application->transitions as $transition)
             <tr class="hover:bg-gray-50">
-                <td class="px-4 py-3 text-xs text-gray-500">{{ $transition->from_state ?: '—' }}</td>
-                <td class="px-4 py-3 text-xs font-medium text-gray-800">{{ $transition->to_state }}</td>
+                <td class="px-4 py-3 text-xs text-gray-500">{{ $transition->from_state ? (\App\Enums\RentalApplicationState::tryFrom($transition->from_state)?->label() ?? $transition->from_state) : '—' }}</td>
+                <td class="px-4 py-3 text-xs font-medium text-gray-800">{{ \App\Enums\RentalApplicationState::tryFrom($transition->to_state)?->label() ?? $transition->to_state }}</td>
                 <td class="px-4 py-3 hidden md:table-cell text-xs text-gray-500">{{ $transition->reason ?: '—' }}</td>
                 <td class="px-4 py-3 hidden lg:table-cell">
                     {{-- Jumps to every audit row written in the same request. --}}

@@ -72,7 +72,7 @@
                     <h2 class="text-lg font-black text-gray-800">{{ $operation->type->label() }}</h2>
                     <p class="text-xs text-gray-500 mt-1">شماره عملیات: <span class="font-mono" dir="ltr">{{ $operation->operation_number }}</span></p>
                 </div>
-                <span class="text-[11px] border rounded-full px-3 py-1 {{ $badge }}">{{ $operation->state->label() }}</span>
+                <span class="text-[11px] border rounded-full px-3 py-1 whitespace-nowrap {{ $badge }}">{{ $operation->state->label() }}</span>
             </div>
 
             <dl class="text-sm divide-y divide-gray-100">
@@ -225,7 +225,7 @@
                     <ol class="text-sm divide-y divide-gray-100">
                         @foreach ($operation->inspections->sortBy('id') as $inspection)
                             <li class="py-2.5">
-                                <div class="flex items-start justify-between gap-3">
+                                <div class="flex items-start flex-wrap justify-between gap-x-3 gap-y-0.5">
                                     <p class="text-[11px] text-gray-500">
                                         {{ $inspection->stage->label() }} · {{ $inspection->inspector?->full_name ?? '—' }}
                                     </p>
@@ -253,11 +253,11 @@
                                         <form method="POST" action="{{ route('admin.operations.inspections.damage.store', $inspection) }}"
                                               class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
                                             @csrf
-                                            <input type="number" name="amount" min="0" step="1" required dir="ltr" placeholder="مبلغ خسارت (تومان)"
+                                            <input aria-label="مبلغ خسارت (تومان)" type="number" name="amount" min="0" step="1" required dir="ltr" placeholder="مبلغ خسارت (تومان)"
                                                    class="border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
-                                            <input type="text" name="evidence_reference" maxlength="255" placeholder="شناسه مدرک (اختیاری)"
+                                            <input aria-label="شناسه مدرک (اختیاری)" type="text" name="evidence_reference" maxlength="255" placeholder="شناسه مدرک (اختیاری)"
                                                    class="border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
-                                            <input type="text" name="notes" maxlength="2000" placeholder="توضیح کارشناس (اختیاری)"
+                                            <input aria-label="توضیح کارشناس (اختیاری)" type="text" name="notes" maxlength="2000" placeholder="توضیح کارشناس (اختیاری)"
                                                    class="border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
                                             <button type="submit" data-confirm="ارزیابی خسارت ثبت شود؟ سابقه ثبت‌شده قابل ویرایش نیست."
                                                     class="sm:col-span-3 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-xs font-bold">ثبت ارزیابی خسارت</button>
@@ -272,7 +272,7 @@
                 @if ($canManage && $transfer && $transfer->isPossessionMoved())
                     <form method="POST" action="{{ route('admin.operations.inspections.store', $operation) }}" class="space-y-3 mt-4">
                         @csrf
-                        <textarea name="findings" rows="3" required maxlength="2000" placeholder="شرح وضعیت و یافته‌های بازرسی"
+                        <textarea aria-label="شرح وضعیت و یافته‌های بازرسی" name="findings" rows="3" required maxlength="2000" placeholder="شرح وضعیت و یافته‌های بازرسی"
                                   class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue"></textarea>
                         <button type="submit" data-confirm="این بازرسی ثبت شود؟ سابقه ثبت‌شده قابل ویرایش یا حذف نیست."
                                 class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700">ثبت بازرسی</button>
@@ -296,7 +296,7 @@
             @else
                 <ol class="text-sm divide-y divide-gray-100">
                     @foreach ($auditEvents as $event)
-                        <li class="py-2.5 flex items-start justify-between gap-3">
+                        <li class="py-2.5 flex items-start flex-wrap justify-between gap-x-3 gap-y-0.5">
                             <div>
                                 <p class="text-gray-700 text-xs font-mono" dir="ltr">{{ $event->action }}</p>
                                 <p class="text-[11px] text-gray-400 mt-1">
@@ -328,7 +328,7 @@
                     @else
                         <form method="POST" action="{{ route('admin.operations.device', $operation) }}" class="space-y-3">
                             @csrf
-                            <select name="device_id" required
+                            <select aria-label="انتخاب دستگاه" name="device_id" required
                                     class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
                                 <option value="">انتخاب کنید…</option>
                                 @foreach ($candidates as $candidate)
@@ -348,7 +348,7 @@
                     <h3 class="text-sm font-black text-gray-800 mb-4">زمان‌بندی</h3>
                     <form method="POST" action="{{ route('admin.operations.schedule', $operation) }}" class="space-y-3">
                         @csrf
-                        <input type="datetime-local" name="scheduled_at" dir="ltr"
+                        <input aria-label="زمان برنامه‌ریزی" type="datetime-local" name="scheduled_at" dir="ltr"
                                value="{{ $operation->scheduled_at?->format('Y-m-d\TH:i') }}"
                                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
                         <button type="submit" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700">ثبت زمان</button>
@@ -369,7 +369,7 @@
                     <p class="text-[11px] text-gray-400 mb-4 leading-6">{{ $recordHint }}</p>
                     <form method="POST" action="{{ route('admin.operations.custody', $operation) }}" class="space-y-3">
                         @csrf
-                        <textarea name="notes" rows="2" placeholder="{{ $notesPlaceholder }}"
+                        <textarea aria-label="یادداشت" name="notes" rows="2" placeholder="{{ $notesPlaceholder }}"
                                   class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue"></textarea>
                         <button type="submit" data-confirm="{{ $recordTitle }}؟"
                                 class="w-full bg-green-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold">ثبت تحویل</button>
@@ -380,7 +380,7 @@
                     <h3 class="text-sm font-black text-gray-800 mb-4">ثبت ناموفق بودن</h3>
                     <form method="POST" action="{{ route('admin.operations.fail', $operation) }}" class="space-y-3">
                         @csrf
-                        <input type="text" name="reason" required maxlength="500" placeholder="دلیل"
+                        <input aria-label="دلیل ناموفق بودن" type="text" name="reason" required maxlength="500" placeholder="دلیل"
                                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
                         <button type="submit" data-confirm="این عملیات ناموفق ثبت شود؟"
                                 class="w-full border border-red-200 text-red-600 rounded-xl px-4 py-2.5 text-sm font-bold">ثبت ناموفق</button>

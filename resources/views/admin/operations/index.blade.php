@@ -24,18 +24,18 @@
     <a href="{{ route('admin.operations.reconciliation') }}" class="inline-block mt-2 text-xs text-brandBlue hover:underline">بررسی مغایرت‌های عملیات و تحویل</a>
 </div>
 
-<form method="GET" class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-col md:flex-row gap-3">
-    <input type="text" name="q" value="{{ request('q') }}" placeholder="شماره عملیات" dir="ltr"
-           class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brandBlue">
+<form method="GET" class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-col md:flex-row md:flex-wrap md:items-center gap-3">
+    <input aria-label="شماره عملیات" type="text" name="q" value="{{ request('q') }}" placeholder="شماره عملیات" dir="ltr"
+           class="flex-1 md:min-w-[14rem] border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono placeholder:font-sans focus:outline-none focus:border-brandBlue">
 
-    <select name="state" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
+    <select aria-label="وضعیت عملیات" name="state" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
         <option value="">همه وضعیت‌ها</option>
         @foreach ($states as $state)
             <option value="{{ $state->value }}" @selected(request('state') === $state->value)>{{ $state->label() }}</option>
         @endforeach
     </select>
 
-    <select name="type" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
+    <select aria-label="نوع عملیات" name="type" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
         <option value="">همه انواع</option>
         @foreach ($types as $type)
             <option value="{{ $type->value }}" @selected(request('type') === $type->value)>{{ $type->label() }}</option>
@@ -69,16 +69,16 @@
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-3">
                             <a href="{{ route('admin.operations.show', $operation) }}"
-                               class="font-mono text-xs text-brandBlue hover:underline" dir="ltr">{{ $operation->operation_number }}</a>
+                               class="font-mono text-xs text-brandBlue hover:underline whitespace-nowrap" dir="ltr">{{ $operation->operation_number }}</a>
                         </td>
                         <td class="px-4 py-3 text-gray-600 text-xs">{{ $operation->type->label() }}</td>
-                        <td class="px-4 py-3 font-mono text-xs text-gray-500" dir="ltr">{{ $operation->application?->application_number ?? '—' }}</td>
+                        <td class="px-4 py-3 font-mono text-xs text-gray-500 whitespace-nowrap" dir="ltr">{{ $operation->application?->application_number ?? '—' }}</td>
                         {{-- Masked: a raw serial does not belong on a list screen. --}}
-                        <td class="px-4 py-3 font-mono text-xs text-gray-600" dir="ltr">{{ $operation->deviceLabel() }}</td>
+                        <td class="px-4 py-3 text-xs text-gray-600 whitespace-nowrap {{ $operation->hasDevice() ? 'font-mono' : '' }}" dir="{{ $operation->hasDevice() ? 'ltr' : 'rtl' }}">{{ $operation->deviceLabel() }}</td>
                         <td class="px-4 py-3 text-gray-600 text-xs">{{ $operation->owner?->displayName() ?? 'گیم‌پک' }}</td>
                         <td class="px-4 py-3 text-gray-600 text-xs">{{ $operation->assignedTo?->full_name ?? '—' }}</td>
                         <td class="px-4 py-3">
-                            <span class="text-[11px] border rounded-full px-3 py-1 {{ $badge($operation->state) }}">{{ $operation->state->label() }}</span>
+                            <span class="text-[11px] border rounded-full px-3 py-1 whitespace-nowrap {{ $badge($operation->state) }}">{{ $operation->state->label() }}</span>
                         </td>
                     </tr>
                 @empty

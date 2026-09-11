@@ -258,7 +258,7 @@
             </div>
             <form method="POST" action="{{ route('admin.logout') }}">
                 @csrf
-                <button type="submit" class="text-white/40 hover:text-red-400 transition-colors" title="خروج">
+                <button type="submit" class="p-2 -m-2 text-white/40 hover:text-red-400 transition-colors" title="خروج" aria-label="خروج از پنل مدیریت">
                     <i class="fa-solid fa-right-from-bracket text-sm"></i>
                 </button>
             </form>

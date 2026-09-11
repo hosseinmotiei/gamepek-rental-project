@@ -36,7 +36,7 @@
         <form method="POST" action="{{ route('admin.verifications.approve', $identity) }}" class="mb-4"
               data-confirm="تأیید دستی هویت این کاربر؟ این اقدام در لاگ ممیزی ثبت می‌شود.">
             @csrf
-            <textarea name="note" rows="2" placeholder="یادداشت (اختیاری)"
+            <textarea aria-label="یادداشت (اختیاری)" name="note" rows="2" placeholder="یادداشت (اختیاری)"
                       class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-brandBlue mb-2"></textarea>
             <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">
                 <i class="fa-solid fa-circle-check ml-1"></i> تأیید هویت
@@ -46,7 +46,7 @@
         <form method="POST" action="{{ route('admin.verifications.reject', $identity) }}"
               data-confirm="رد احراز هویت این کاربر؟">
             @csrf
-            <textarea name="reason" rows="2" required placeholder="دلیل رد (الزامی)"
+            <textarea aria-label="دلیل رد (الزامی)" name="reason" rows="2" required placeholder="دلیل رد (الزامی)"
                       class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-brandBlue mb-2"></textarea>
             <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">
                 <i class="fa-solid fa-ban ml-1"></i> رد هویت

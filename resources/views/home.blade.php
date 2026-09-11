@@ -126,8 +126,8 @@
             </div>
             @endforelse
 
-            <button onclick="prevSlide()" class="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 w-8 h-8 md:w-12 md:h-12 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20 transition-all"><i class="fa-solid fa-chevron-right text-sm md:text-base"></i></button>
-            <button onclick="nextSlide()" class="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 w-8 h-8 md:w-12 md:h-12 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20 transition-all"><i class="fa-solid fa-chevron-left text-sm md:text-base"></i></button>
+            <button type="button" aria-label="اسلاید قبلی" onclick="prevSlide()" class="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 w-8 h-8 md:w-12 md:h-12 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20 transition-all"><i class="fa-solid fa-chevron-right text-sm md:text-base"></i></button>
+            <button type="button" aria-label="اسلاید بعدی" onclick="nextSlide()" class="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 w-8 h-8 md:w-12 md:h-12 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full flex items-center justify-center text-white z-20 transition-all"><i class="fa-solid fa-chevron-left text-sm md:text-base"></i></button>
             <div class="absolute bottom-3 md:bottom-6 left-1/2 -translate-x-1/2 flex gap-1.5 md:gap-2 z-20" id="carousel-indicators"></div>
         </div>
     </section>

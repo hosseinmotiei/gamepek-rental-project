@@ -48,7 +48,7 @@
                 <img src="{{ asset('images/logos/logo-horizontal.png') }}" alt="GamePek" class="h-9 w-auto" onerror="this.classList.add('hidden'); this.nextElementSibling.classList.remove('hidden');">
                 <span class="hidden text-2xl font-black tracking-tight text-brandDark">گیم‌<span class="text-brandBlue">پک</span></span>
             </a>
-            <a href="{{ route('home') }}" class="w-8 h-8 flex items-center justify-center text-gray-800 hover:bg-gray-100 rounded-full transition-colors">
+            <a aria-label="بازگشت به صفحه اصلی" href="{{ route('home') }}" class="w-8 h-8 flex items-center justify-center text-gray-800 hover:bg-gray-100 rounded-full transition-colors">
                 <i class="fa-solid fa-arrow-left"></i>
             </a>
         </header>
@@ -59,7 +59,7 @@
             <p class="text-xs text-gray-500 mb-8">{{ setting('auth.login_page_subtitle', 'لطفا شماره موبایل خود را وارد کنید') }}</p>
             <div class="relative mb-6">
                 <input type="tel" id="phone-input" inputmode="numeric" class="peer w-full border border-gray-300 rounded-xl px-4 pt-6 pb-2 text-sm text-gray-800 outline-none focus:border-brandBlue focus:border-2 transition-all placeholder-transparent text-left" placeholder="09123456789" dir="ltr" maxlength="11" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
-                <label class="absolute right-4 top-4 text-gray-400 text-xs transition-all pointer-events-none">شماره موبایل</label>
+                <label for="phone-input" class="absolute right-4 top-4 text-gray-400 text-xs transition-all pointer-events-none">شماره موبایل</label>
             </div>
             <p class="text-[10px] text-gray-400 mt-auto mb-4 text-center leading-relaxed px-4">ورود شما به معنای پذیرش <a href="{{ route('terms') }}" class="text-brandBlue">شرایط گیم‌پک</a> است</p>
             <button id="send-otp-btn" onclick="submitPhone()" class="w-full bg-brandBlue text-white font-bold py-3.5 rounded-xl hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20 text-sm mb-6 disabled:opacity-60">{{ setting('auth.send_otp_button_text', 'ورود به گیم‌پک') }}</button>
@@ -71,7 +71,7 @@
             <p class="text-xs text-gray-500 mb-8">کد تایید برای شماره <span id="display-phone" class="font-medium text-gray-800 dir-ltr"></span> پیامک شد</p>
             <div class="relative mb-4">
                 <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="{{ (int) config('rental.otp.length', 5) }}" id="otp-input" class="peer w-full border border-gray-300 rounded-xl pt-6 pb-2 text-center text-2xl font-black text-gray-800 outline-none focus:border-brandBlue focus:border-2 transition-all placeholder-transparent disabled:opacity-50 disabled:bg-gray-50" style="letter-spacing: .6em; padding-left: .6em;" placeholder="{{ str_repeat('1', (int) config('rental.otp.length', 5)) }}" dir="ltr">
-                <label class="absolute right-4 top-4 text-gray-400 text-xs transition-all pointer-events-none">کد تایید</label>
+                <label for="otp-input" class="absolute right-4 top-4 text-gray-400 text-xs transition-all pointer-events-none">کد تایید</label>
             </div>
             <div class="mt-auto mb-4 text-center">
                 <span id="otp-timer" class="text-xs font-medium text-gray-500"></span>
@@ -89,7 +89,7 @@
             <p class="text-xs text-gray-500 mb-8">لطفا نام و نام خانوادگی خود را وارد کنید</p>
             <div class="relative mb-6">
                 <input type="text" id="name-input" class="peer w-full border border-gray-300 rounded-xl px-4 pt-6 pb-2 text-sm text-gray-800 outline-none focus:border-brandBlue focus:border-2 transition-all placeholder-transparent" placeholder="نام و نام خانوادگی">
-                <label class="absolute right-4 top-4 text-gray-400 text-xs transition-all pointer-events-none">نام و نام خانوادگی</label>
+                <label for="name-input" class="absolute right-4 top-4 text-gray-400 text-xs transition-all pointer-events-none">نام و نام خانوادگی</label>
             </div>
             <button onclick="submitName()" class="w-full bg-brandBlue text-white font-bold py-3.5 rounded-xl hover:bg-blue-600 transition-colors shadow-lg text-sm mb-6 mt-auto">ثبت و ورود</button>
         </section>

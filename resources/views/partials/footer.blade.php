@@ -93,9 +93,17 @@
         <div class="flex flex-col md:flex-row justify-between items-center pt-6 md:pt-8 border-t border-gray-100 text-[10px] md:text-xs text-gray-500 gap-4 text-center md:text-left">
             <p>{{ setting('footer.copyright_text', 'کلیه حقوق این سایت متعلق به فروشگاه گیم‌پک می‌باشد.') }} {{ date('Y') }} ©</p>
             <div class="flex gap-4 text-base md:text-lg">
-                <a href="{{ $footerInstagramUrl }}" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-pink-500 transition-colors"><i class="fa-brands fa-instagram"></i></a>
-                <a href="{{ setting('general.telegram_url', '') ?: '#' }}" class="text-gray-400 hover:text-blue-400 transition-colors"><i class="fa-brands fa-telegram"></i></a>
-                <a href="{{ setting('general.youtube_url', '') ?: '#' }}" class="text-gray-400 hover:text-red-600 transition-colors"><i class="fa-brands fa-youtube"></i></a>
+                {{-- Only links that are actually configured. They used to fall back to
+                     href="#", which rendered an icon that went nowhere on every page. --}}
+                @if ($footerInstagramUrl && $footerInstagramUrl !== '#')
+                    <a href="{{ $footerInstagramUrl }}" target="_blank" rel="noopener noreferrer" aria-label="اینستاگرام گیم‌پک" class="p-2 -m-2 text-gray-400 hover:text-pink-500 transition-colors"><i class="fa-brands fa-instagram" aria-hidden="true"></i></a>
+                @endif
+                @if ($footerTelegramUrl = setting('general.telegram_url', ''))
+                    <a href="{{ $footerTelegramUrl }}" aria-label="تلگرام گیم‌پک" class="p-2 -m-2 text-gray-400 hover:text-blue-400 transition-colors"><i class="fa-brands fa-telegram" aria-hidden="true"></i></a>
+                @endif
+                @if ($footerYoutubeUrl = setting('general.youtube_url', ''))
+                    <a href="{{ $footerYoutubeUrl }}" aria-label="یوتیوب گیم‌پک" class="p-2 -m-2 text-gray-400 hover:text-red-600 transition-colors"><i class="fa-brands fa-youtube" aria-hidden="true"></i></a>
+                @endif
             </div>
         </div>
     </div>

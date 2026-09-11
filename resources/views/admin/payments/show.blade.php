@@ -129,7 +129,7 @@ $sm = $statusMeta[$transaction->status] ?? ['label' => $transaction->status, 'cl
             <form method="POST" action="{{ route('admin.payments.approve', $transaction) }}" class="mb-3"
                   onsubmit="return confirm('آیا از تأیید این پرداخت مطمئن هستید؟ این عملیات سفارش را به‌عنوان پرداخت‌شده ثبت می‌کند.')">
                 @csrf
-                <textarea name="reason" rows="2" maxlength="500" placeholder="یادداشت تأیید (اختیاری)"
+                <textarea aria-label="یادداشت تأیید (اختیاری)" name="reason" rows="2" maxlength="500" placeholder="یادداشت تأیید (اختیاری)"
                           class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-brandBlue mb-2"></textarea>
                 <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl text-sm transition-colors">
                     <i class="fa-solid fa-check ml-1"></i> تأیید پرداخت
@@ -139,7 +139,7 @@ $sm = $statusMeta[$transaction->status] ?? ['label' => $transaction->status, 'cl
             <form method="POST" action="{{ route('admin.payments.reject', $transaction) }}"
                   onsubmit="return confirm('آیا از رد این پرداخت مطمئن هستید؟')">
                 @csrf
-                <textarea name="reason" rows="2" maxlength="500" required placeholder="دلیل رد (الزامی)"
+                <textarea aria-label="دلیل رد (الزامی)" name="reason" rows="2" maxlength="500" required placeholder="دلیل رد (الزامی)"
                           class="w-full bg-gray-50 border {{ $errors->has('reason') ? 'border-red-400' : 'border-gray-200' }} rounded-xl px-3 py-2 text-xs outline-none focus:border-brandBlue mb-2"></textarea>
                 @error('reason') <p class="text-red-500 text-[11px] mb-2">{{ $message }}</p> @enderror
                 <button type="submit" class="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2.5 rounded-xl text-sm transition-colors">

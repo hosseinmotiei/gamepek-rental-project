@@ -56,4 +56,9 @@
        copy-pasted verbatim into three separate page views under three
        different class names (.sort-tab-active, .tab-active). One definition. */
     .tab-active { border-bottom: 3px solid #0066FF; color: #0066FF; font-weight: 700; }
+
+    /* Keyboard focus. Many controls use `outline-none` for mouse users; nothing
+       gave keyboard users a visible focus at all. :focus-visible applies only to
+       keyboard (and other non-pointer) focus, so mouse clicks look unchanged. */
+    :focus-visible { outline: 2px solid #0066FF !important; outline-offset: 2px !important; }
 </style>

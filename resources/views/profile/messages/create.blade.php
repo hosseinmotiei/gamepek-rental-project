@@ -3,7 +3,7 @@
 @section('content')
 <div class="max-w-[700px] mx-auto px-4 py-6 md:py-8">
     <div class="flex items-center gap-3 mb-6">
-        <a href="{{ route('messages.index') }}" class="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+        <a aria-label="بازگشت به پیام‌ها" href="{{ route('messages.index') }}" class="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
             <i class="fa-solid fa-arrow-right"></i>
         </a>
         <h1 class="text-xl font-black text-gray-800">شروع گفتگوی جدید</h1>

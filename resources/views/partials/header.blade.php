@@ -42,7 +42,7 @@
             <!-- Desktop Search Bar -->
             <div class="relative hidden md:block w-[400px] lg:w-[500px]">
                 <span class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg"><i class="fa-solid fa-magnifying-glass"></i></span>
-                <input type="text" id="search-input" name="q" placeholder="{{ setting('header.search_placeholder', 'جستجو در کنسول، بازی، لوازم جانبی...') }}"
+                <input aria-label="جستجو" type="text" id="search-input" name="q" placeholder="{{ setting('header.search_placeholder', 'جستجو در کنسول، بازی، لوازم جانبی...') }}"
                        class="w-full bg-brandGray text-sm py-3.5 pr-12 pl-4 rounded-xl border border-transparent focus:border-brandBlue focus:bg-white focus:shadow-md outline-none transition-all">
                 <div id="search-results" class="absolute top-full right-0 w-full bg-white rounded-xl shadow-lg border border-gray-100 mt-1 hidden z-50"></div>
             </div>
@@ -103,7 +103,7 @@
         <!-- Mobile Search Bar (Full width below logo) -->
         <div class="relative w-full md:hidden">
             <span class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"><i class="fa-solid fa-magnifying-glass"></i></span>
-            <input type="text" id="mobile-search-input" name="q" placeholder="{{ setting('header.search_placeholder', 'جستجو در گیم‌پک...') }}" class="w-full bg-brandGray text-sm py-3 pr-11 pl-4 rounded-xl border border-transparent outline-none focus:bg-white focus:border-brandBlue">
+            <input aria-label="جستجو" type="text" id="mobile-search-input" name="q" placeholder="{{ setting('header.search_placeholder', 'جستجو در گیم‌پک...') }}" class="w-full bg-brandGray text-sm py-3 pr-11 pl-4 rounded-xl border border-transparent outline-none focus:bg-white focus:border-brandBlue">
         </div>
     </div>
 
@@ -124,7 +124,7 @@
                         <i class="fa-solid fa-chevron-down text-[10px] text-gray-400 transition-transform"></i>
                     </button>
                     <!-- Dropdown Container -->
-                    <div id="mega-menu-panel" class="mega-menu-panel absolute right-0 top-full mt-2 w-[900px] bg-white rounded-b-2xl shadow-xl border border-gray-100 opacity-0 invisible transition-all duration-300 flex h-[450px] overflow-hidden">
+                    <div id="mega-menu-panel" class="mega-menu-panel absolute right-0 top-full mt-2 w-[900px] max-w-[calc(100vw-2rem)] bg-white rounded-b-2xl shadow-xl border border-gray-100 opacity-0 invisible transition-all duration-300 flex h-[450px] overflow-hidden">
                         @if($categoryMenuTabs->isEmpty())
                         <div class="flex-1 flex flex-col items-center justify-center text-center px-8 text-gray-400">
                             <i class="fa-solid fa-folder-open text-4xl mb-3"></i>
@@ -182,9 +182,9 @@
         <div class="flex items-center gap-3">
             <div class="relative flex-1">
                 <i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                <input type="text" placeholder="جستجو در دسته‌بندی‌ها..." class="w-full bg-gray-100 py-2.5 pr-9 pl-4 rounded-xl text-sm outline-none focus:bg-white focus:border focus:border-brandBlue transition-colors">
+                <input aria-label="جستجو در دسته‌بندی‌ها" type="text" placeholder="جستجو در دسته‌بندی‌ها..." class="w-full bg-gray-100 py-2.5 pr-9 pl-4 rounded-xl text-sm outline-none focus:bg-white focus:border focus:border-brandBlue transition-colors">
             </div>
-            <button onclick="closeMobileCategories()" class="w-10 h-10 flex items-center justify-center text-gray-600 shrink-0"><i class="fa-solid fa-arrow-left text-lg"></i></button>
+            <button type="button" aria-label="بستن دسته‌بندی‌ها" onclick="closeMobileCategories()" class="w-10 h-10 flex items-center justify-center text-gray-600 shrink-0"><i class="fa-solid fa-arrow-left text-lg"></i></button>
         </div>
     </div>
     @if($categoryMenuTabs->isEmpty())
@@ -387,7 +387,7 @@
                             if (item.type === 'product') {
                                 return `<a href="${item.url}" class="flex items-center gap-3 p-3 hover:bg-gray-50 border-b border-gray-50 last:border-0">
                                     <div class="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 overflow-hidden border border-gray-100">
-                                        ${item.image_url ? `<img src="${item.image_url}" class="w-full h-full object-contain p-1">` : `<i class="fa-solid fa-gamepad text-gray-400"></i>`}
+                                        ${item.image_url ? `<img src="${item.image_url}" alt="" class="w-full h-full object-contain p-1">` : `<i class="fa-solid fa-gamepad text-gray-400"></i>`}
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         <p class="text-sm font-bold text-gray-800 line-clamp-1">${item.title}</p>
@@ -398,7 +398,7 @@
                             }
                             return `<a href="${item.url}" class="flex items-center gap-3 p-3 hover:bg-gray-50 border-b border-gray-50 last:border-0">
                                 <div class="w-10 h-10 rounded-lg bg-brandLightBlue text-brandBlue flex items-center justify-center shrink-0 overflow-hidden">
-                                    ${item.image_url ? `<img src="${item.image_url}" class="w-full h-full object-cover">` : `<i class="${item.icon || 'fa-solid fa-border-all'}"></i>`}
+                                    ${item.image_url ? `<img src="${item.image_url}" alt="" class="w-full h-full object-cover">` : `<i class="${item.icon || 'fa-solid fa-border-all'}"></i>`}
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <p class="text-sm font-bold text-gray-800 line-clamp-1">${item.title}</p>
@@ -434,7 +434,7 @@
                 miniCartItems.innerHTML = d.items.map(item => `
                     <div class="flex gap-3 relative border-b border-gray-50 pb-4 last:border-0 last:pb-0">
                         <div class="w-20 h-20 bg-gray-50 rounded-xl flex items-center justify-center shrink-0 border border-gray-100 p-1">
-                            <img src="${item.image || 'https://placehold.co/100x100/F5F5F5/111?text=PS'}" class="w-full h-full object-contain mix-blend-multiply">
+                            <img src="${item.image || 'https://placehold.co/100x100/F5F5F5/111?text=PS'}" alt="" class="w-full h-full object-contain mix-blend-multiply">
                         </div>
                         <div class="flex flex-col justify-between flex-1 py-1">
                             <h4 class="text-xs font-bold text-gray-800 line-clamp-2 leading-relaxed">${item.title}</h4>

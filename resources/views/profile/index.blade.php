@@ -29,7 +29,7 @@
 
 {{-- Mobile Header: Inner Section --}}
 <div id="mobile-header-inner" class="md:hidden sticky top-0 z-40 w-full bg-white border-b border-gray-100 hidden items-center px-4 py-4 gap-3 transition-opacity">
-    <button onclick="switchProfileTab('summary')" class="text-gray-600 hover:text-brandBlue transition-colors">
+    <button aria-label="بازگشت" onclick="switchProfileTab('summary')" class="text-gray-600 hover:text-brandBlue transition-colors">
         <i class="fa-solid fa-arrow-right text-lg"></i>
     </button>
     <h1 id="mobile-header-title" class="font-bold text-gray-800 text-sm">پروفایل</h1>
@@ -43,7 +43,7 @@
 
             {{-- User Card --}}
             <div class="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm relative">
-                <button onclick="openEditNameModal()" class="absolute top-4 left-4 text-brandBlue hover:text-blue-700 transition-colors">
+                <button aria-label="ویرایش نام" onclick="openEditNameModal()" class="absolute top-4 left-4 text-brandBlue hover:text-blue-700 transition-colors">
                     <i class="fa-solid fa-pencil text-lg"></i>
                 </button>
                 <div class="flex flex-col items-center md:items-start text-center md:text-right border-b border-gray-100 pb-4 mb-4">
@@ -166,7 +166,7 @@
         </aside>
 
         {{-- ===== MAIN CONTENT ===== --}}
-        <div class="flex-1 flex flex-col gap-4 md:gap-6 relative">
+        <div class="flex-1 min-w-0 flex flex-col gap-4 md:gap-6 relative">
 
             {{-- ────── SECTION 1: SUMMARY ────── --}}
             <div id="sec-summary" class="profile-section flex flex-col gap-4 md:gap-6">
@@ -177,33 +177,33 @@
                         <h2 class="font-bold text-gray-800 text-sm md:text-base border-b-2 border-brandBlue pb-2 inline-block">سفارش‌های من</h2>
                         <button onclick="switchProfileTab('orders')" class="text-xs md:text-sm text-brandBlue font-bold hover:underline flex items-center gap-1">مشاهده همه <i class="fa-solid fa-chevron-left text-[10px]"></i></button>
                     </div>
-                    <div class="flex justify-around md:justify-start md:gap-12 text-center md:text-right">
-                        <button onclick="switchProfileTab('orders'); switchInnerTab('orders', 'tab-order-current', document.getElementById('btn-order-current'))" class="flex flex-col md:flex-row items-center gap-2 md:gap-4 cursor-pointer group">
+                    <div class="flex justify-around lg:justify-start lg:gap-12 text-center lg:text-right">
+                        <button onclick="switchProfileTab('orders'); switchInnerTab('orders', 'tab-order-current', document.getElementById('btn-order-current'))" class="flex flex-col lg:flex-row items-center gap-2 lg:gap-4 cursor-pointer group">
                             <div class="w-14 h-14 md:w-16 md:h-16 relative rounded-2xl bg-blue-50 text-brandBlue flex items-center justify-center drop-shadow-sm group-hover:-translate-y-1 transition-transform">
                                 <i class="fa-solid fa-truck-fast text-2xl md:text-3xl"></i>
                                 <span class="absolute -bottom-1 -right-1 bg-brandBlue text-white text-[10px] md:text-xs font-bold px-2 py-0.5 rounded-md border border-white">{{ persian_number($orderCounts['active']) }}</span>
                             </div>
-                            <div class="text-center md:text-right mt-1 md:mt-0">
+                            <div class="text-center lg:text-right mt-1 lg:mt-0">
                                 <span class="block text-xs md:text-sm text-gray-600 mb-0.5">سفارش</span>
                                 <span class="block text-xs md:text-sm font-bold text-gray-800">جاری</span>
                             </div>
                         </button>
-                        <button onclick="switchProfileTab('orders'); switchInnerTab('orders', 'tab-order-delivered', document.getElementById('btn-order-delivered'))" class="flex flex-col md:flex-row items-center gap-2 md:gap-4 cursor-pointer group">
+                        <button onclick="switchProfileTab('orders'); switchInnerTab('orders', 'tab-order-delivered', document.getElementById('btn-order-delivered'))" class="flex flex-col lg:flex-row items-center gap-2 lg:gap-4 cursor-pointer group">
                             <div class="w-14 h-14 md:w-16 md:h-16 relative rounded-2xl bg-green-50 text-green-600 flex items-center justify-center drop-shadow-sm group-hover:-translate-y-1 transition-transform">
                                 <i class="fa-solid fa-circle-check text-2xl md:text-3xl"></i>
                                 <span class="absolute -bottom-1 -right-1 bg-green-500 text-white text-[10px] md:text-xs font-bold px-2 py-0.5 rounded-md border border-white">{{ persian_number($orderCounts['delivered']) }}</span>
                             </div>
-                            <div class="text-center md:text-right mt-1 md:mt-0">
+                            <div class="text-center lg:text-right mt-1 lg:mt-0">
                                 <span class="block text-xs md:text-sm text-gray-600 mb-0.5">سفارش</span>
                                 <span class="block text-xs md:text-sm font-bold text-gray-800">تحویل شده</span>
                             </div>
                         </button>
-                        <button onclick="switchProfileTab('orders'); switchInnerTab('orders', 'tab-order-returned', document.getElementById('btn-order-returned'))" class="flex flex-col md:flex-row items-center gap-2 md:gap-4 cursor-pointer group">
+                        <button onclick="switchProfileTab('orders'); switchInnerTab('orders', 'tab-order-returned', document.getElementById('btn-order-returned'))" class="flex flex-col lg:flex-row items-center gap-2 lg:gap-4 cursor-pointer group">
                             <div class="w-14 h-14 md:w-16 md:h-16 relative rounded-2xl bg-yellow-50 text-yellow-600 flex items-center justify-center drop-shadow-sm group-hover:-translate-y-1 transition-transform">
                                 <i class="fa-solid fa-rotate-left text-2xl md:text-3xl"></i>
                                 <span class="absolute -bottom-1 -right-1 bg-yellow-500 text-white text-[10px] md:text-xs font-bold px-2 py-0.5 rounded-md border border-white">{{ persian_number($orderCounts['returned']) }}</span>
                             </div>
-                            <div class="text-center md:text-right mt-1 md:mt-0">
+                            <div class="text-center lg:text-right mt-1 lg:mt-0">
                                 <span class="block text-xs md:text-sm text-gray-600 mb-0.5">سفارش</span>
                                 <span class="block text-xs md:text-sm font-bold text-gray-800">مرجوع شده</span>
                             </div>
@@ -595,7 +595,7 @@
                 <div class="bg-white w-full md:max-w-sm rounded-t-2xl md:rounded-2xl flex flex-col shadow-2xl transform scale-95 transition-transform duration-300">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                         <h3 id="wallet-confirm-title" class="font-bold text-gray-800 text-sm">تایید افزایش موجودی</h3>
-                        <button onclick="closeWalletConfirm()" class="text-gray-400 hover:text-gray-800"><i class="fa-solid fa-xmark text-lg"></i></button>
+                        <button aria-label="بستن" onclick="closeWalletConfirm()" class="text-gray-400 hover:text-gray-800"><i class="fa-solid fa-xmark text-lg"></i></button>
                     </div>
                     <div class="p-5 flex flex-col gap-3 text-sm">
                         <div class="flex items-start justify-between gap-4">
@@ -749,7 +749,7 @@
                             <span class="text-[10px] md:text-xs text-gray-400">نام و نام خانوادگی</span>
                             <span class="user-name-display text-sm md:text-base font-bold text-gray-800">{{ $user->full_name ?? '-' }}</span>
                         </div>
-                        <button onclick="openEditNameModal()" class="text-brandBlue p-2"><i class="fa-solid fa-pencil"></i></button>
+                        <button aria-label="ویرایش نام" onclick="openEditNameModal()" class="text-brandBlue p-2"><i class="fa-solid fa-pencil"></i></button>
                     </div>
                     <div class="flex items-center justify-between py-4 border-b border-gray-100">
                         <div class="flex flex-col gap-1">
@@ -796,7 +796,7 @@
 <div id="address-modal" class="fixed inset-0 bg-white md:bg-black/60 z-[70] hidden flex-col md:items-center md:justify-center transition-opacity duration-300 opacity-0">
     <div class="bg-white w-full h-full md:h-auto md:w-[500px] md:max-h-[90vh] md:rounded-2xl flex flex-col transform md:scale-95 transition-transform duration-300 shadow-2xl">
         <div class="flex items-center justify-between px-4 py-4 border-b border-gray-100 shrink-0">
-            <button onclick="closeAddressModal()" class="text-gray-500 hover:text-gray-800 p-1"><i class="fa-solid fa-xmark text-lg"></i></button>
+            <button aria-label="بستن" onclick="closeAddressModal()" class="text-gray-500 hover:text-gray-800 p-1"><i class="fa-solid fa-xmark text-lg"></i></button>
             <h3 class="font-bold text-gray-800 text-sm md:text-base mx-auto pr-4">افزودن آدرس جدید</h3>
         </div>
         <div class="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-5 hide-scrollbar">
@@ -857,7 +857,7 @@
     <div class="bg-white w-full max-w-sm rounded-2xl flex flex-col shadow-2xl transform scale-95 transition-transform duration-300">
         <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <h3 class="font-bold text-gray-800 text-sm">ویرایش نام و نام خانوادگی</h3>
-            <button onclick="closeEditNameModal()" class="text-gray-400 hover:text-gray-800"><i class="fa-solid fa-xmark text-lg"></i></button>
+            <button aria-label="بستن" onclick="closeEditNameModal()" class="text-gray-400 hover:text-gray-800"><i class="fa-solid fa-xmark text-lg"></i></button>
         </div>
         <div class="p-5">
             <div class="flex flex-col gap-2">

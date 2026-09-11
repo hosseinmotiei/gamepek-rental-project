@@ -20,7 +20,7 @@
     [$pill, $dotColor] = $styles[$color] ?? $styles['gray'];
 @endphp
 
-<span {{ $attributes->merge(['class' => "inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full $pill"]) }}>
+<span {{ $attributes->merge(['class' => "inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium px-2 py-1 rounded-full $pill"]) }}>
     @if($dot)<span class="w-1.5 h-1.5 {{ $dotColor }} rounded-full"></span>@endif
     {{ $label !== '' ? $label : $slot }}
 </span>

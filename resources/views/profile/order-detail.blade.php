@@ -3,7 +3,7 @@
 @section('content')
 <div class="max-w-[900px] mx-auto px-4 py-6 md:py-8">
     <div class="flex items-center gap-3 mb-6">
-        <a href="{{ route('orders.index') }}" class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-arrow-right"></i></a>
+        <a aria-label="بازگشت به سفارش‌ها" href="{{ route('orders.index') }}" class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-arrow-right"></i></a>
         <h1 class="text-xl font-black text-gray-800">سفارش {{ $order->order_number }}</h1>
         <span class="text-xs px-3 py-1 rounded-full font-bold
             {{ $order->status === 'delivered' ? 'bg-green-100 text-green-600' :
@@ -21,7 +21,7 @@
                 <div class="flex flex-col gap-4">
                     @foreach($order->items as $item)
                     <div class="flex gap-4 pb-4 border-b border-gray-50 last:border-0 last:pb-0">
-                        <img src="{{ media_url($item->product_image_snapshot, 'https://placehold.co/80x80/F5F5F5/111?text=P') }}"
+                        <img src="{{ media_url($item->product_image_snapshot, 'https://placehold.co/80x80/F5F5F5/111?text=P') }}" alt=""
                              class="w-16 h-16 object-contain bg-gray-50 rounded-xl shrink-0">
                         <div class="flex-1">
                             <p class="font-bold text-sm text-gray-800">{{ $item->product_title_snapshot }}</p>

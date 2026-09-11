@@ -101,7 +101,7 @@
                             class="w-full bg-gray-50 border {{ $errors->has('password') ? 'border-red-400 bg-red-50' : 'border-gray-200' }} rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-brandBlue focus:bg-white transition-all"
                             dir="ltr"
                         >
-                        <button type="button" onclick="togglePassword()" class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        <button type="button" onclick="togglePassword()" aria-label="نمایش یا پنهان کردن رمز عبور" class="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600">
                             <i id="eye-icon" class="fa-regular fa-eye text-sm"></i>
                         </button>
                     </div>

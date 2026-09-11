@@ -230,9 +230,9 @@
             const head = document.createElement('div');
             head.className = 'flex items-center justify-between mb-2';
             head.innerHTML =
-                '<button type="button" data-jdp-prev class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500"><i class="fa-solid fa-chevron-right text-xs"></i></button>' +
+                '<button type="button" data-jdp-prev aria-label="ماه قبل" class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500"><i class="fa-solid fa-chevron-right text-xs"></i></button>' +
                 `<span class="text-sm font-bold text-gray-800">${MONTHS[jm - 1]} ${fa(jy)}</span>` +
-                '<button type="button" data-jdp-next class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500"><i class="fa-solid fa-chevron-left text-xs"></i></button>';
+                '<button type="button" data-jdp-next aria-label="ماه بعد" class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500"><i class="fa-solid fa-chevron-left text-xs"></i></button>';
             this.panel.appendChild(head);
 
             const wd = document.createElement('div');

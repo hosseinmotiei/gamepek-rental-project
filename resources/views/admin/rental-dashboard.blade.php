@@ -261,7 +261,7 @@
         @else
             <ul class="text-xs divide-y divide-gray-100">
                 @foreach ($metrics['recent_operations'] as $operation)
-                    <li class="py-2 flex items-start justify-between gap-3">
+                    <li class="py-2 flex items-start flex-wrap justify-between gap-x-3 gap-y-0.5">
                         <div>
                             <p class="text-gray-700">{{ $operation->type->label() }}</p>
                             <p class="text-[11px] text-gray-400 mt-0.5">

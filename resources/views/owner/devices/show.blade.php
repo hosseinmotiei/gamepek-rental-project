@@ -33,7 +33,7 @@
                 <h1 class="text-lg md:text-xl font-black text-gray-800">{{ $device->product?->title_fa ?? '—' }}</h1>
                 <p class="text-[11px] text-gray-500 mt-1 font-mono" dir="ltr">{{ $device->maskedSerial() }}</p>
             </div>
-            <span class="shrink-0 text-[11px] border rounded-full px-3 py-1 {{ $badge }}">{{ $device->state->label() }}</span>
+            <span class="shrink-0 text-[11px] border rounded-full px-3 py-1 whitespace-nowrap {{ $badge }}">{{ $device->state->label() }}</span>
         </div>
 
         <dl class="text-sm divide-y divide-gray-100">

@@ -21,17 +21,17 @@
 </div>
 
 <form method="GET" class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-col md:flex-row gap-3">
-    <input type="text" name="q" value="{{ request('q') }}" placeholder="جستجوی شماره سریال" dir="ltr"
-           class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brandBlue">
+    <input aria-label="جستجوی شماره سریال" type="text" name="q" value="{{ request('q') }}" placeholder="جستجوی شماره سریال" dir="ltr"
+           class="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-mono placeholder:font-sans focus:outline-none focus:border-brandBlue">
 
-    <select name="state" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
+    <select aria-label="وضعیت دستگاه" name="state" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
         <option value="">همه وضعیت‌ها</option>
         @foreach ($states as $state)
             <option value="{{ $state->value }}" @selected(request('state') === $state->value)>{{ $state->label() }}</option>
         @endforeach
     </select>
 
-    <select name="ownership" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
+    <select aria-label="مالکیت دستگاه" name="ownership" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue">
         <option value="">همه مالکیت‌ها</option>
         @foreach ($ownerships as $ownership)
             <option value="{{ $ownership->value }}" @selected(request('ownership') === $ownership->value)>{{ $ownership->label() }}</option>
@@ -65,7 +65,7 @@
                         <td class="px-4 py-3 font-mono text-gray-600" dir="ltr">{{ $device->maskedSerial() }}</td>
                         <td class="px-4 py-3 text-gray-600">{{ $device->ownerLabel() }}</td>
                         <td class="px-4 py-3">
-                            <span class="text-[11px] border rounded-full px-2.5 py-1 {{ $badge($device->state) }}">{{ $device->state->label() }}</span>
+                            <span class="text-[11px] border rounded-full px-2.5 py-1 whitespace-nowrap {{ $badge($device->state) }}">{{ $device->state->label() }}</span>
                         </td>
                         <td class="px-4 py-3 text-gray-500 text-xs">{{ $device->verification_state->label() }}</td>
                         <td class="px-4 py-3 text-left">

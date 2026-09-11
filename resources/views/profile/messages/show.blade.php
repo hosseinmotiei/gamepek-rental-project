@@ -3,7 +3,7 @@
 @section('content')
 <div class="max-w-[800px] mx-auto px-4 py-6 md:py-8">
     <div class="flex items-center gap-3 mb-6">
-        <a href="{{ route('messages.index') }}" class="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+        <a aria-label="بازگشت به پیام‌ها" href="{{ route('messages.index') }}" class="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
             <i class="fa-solid fa-arrow-right"></i>
         </a>
         <div class="flex-1">
@@ -53,7 +53,7 @@
     @if($conversation->isOpen())
     <form method="POST" action="{{ route('messages.reply', $conversation) }}" class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
         @csrf
-        <textarea name="body" rows="3" maxlength="5000" placeholder="پاسخ خود را بنویسید..." class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 outline-none focus:border-brandBlue resize-none"></textarea>
+        <textarea aria-label="متن پاسخ" name="body" rows="3" maxlength="5000" placeholder="پاسخ خود را بنویسید..." class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 outline-none focus:border-brandBlue resize-none"></textarea>
         <button type="submit" class="self-start bg-brandBlue text-white font-bold py-2.5 px-6 rounded-xl text-sm hover:bg-blue-600 transition-colors">ارسال پیام</button>
     </form>
     @else
