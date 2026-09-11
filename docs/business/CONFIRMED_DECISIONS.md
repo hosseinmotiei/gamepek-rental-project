@@ -220,6 +220,23 @@ the owner decides it, and several additionally require legal review.
 
 ### 4.1 Requires business owner decision
 
+> **How the deferred and unresolved items below behave in code today.** None of
+> them has acquired a quiet default. Each is enforced as a refusal, and the
+> admin rental dashboard reports the resulting QUEUE (what is waiting for a
+> human) rather than a status it cannot justify:
+>
+> | Item | Current safe behaviour |
+> |---|---|
+> | Owner cancellation | **No endpoint exists.** `RentalChainOrchestrator::cancel()` is reachable from no route at all, and the owner's whole surface is their profile, their devices and their own pickups. An owner cannot cancel, reclaim or reach another party's rental |
+> | Owner reclaim mid-rental | Refused twice: `DevicePolicy::disable()` and `DeviceRegistrationService::disable()` both check `Device::isCommittedToLiveRental()`, which covers a device in a customer's hands **and** one promised to a paid future booking |
+> | Allocation fairness | No device is ever chosen by code. A pickup waits in `awaiting_device_allocation` until a human names one; `attachDevice()` only refuses unsafe choices |
+> | All devices busy | The booking is refused and **nothing is written** — no waitlist, queue, backorder or hold row |
+> | Device disable / replanning | A disable that would strand a live rental is refused outright; no booking is ever silently moved to another device |
+> | Cancelled / rejected + note | Every note outcome refuses, so the note stays held with its append-only history intact. No settlement, custody or wallet effect |
+> | Damage-payment deadline | **None exists.** Nothing expires, forgives, re-prices or transfers a claim because time passed; the only time-based rule in the domain is the owner's confirmed 2-hour defect window (C-38) |
+> | Late-fee recipient (C-60) | Calculated only; no charge, credit, split, route or action |
+> | Zone 1/2 effects (C-61) | No zone concept in code at all |
+
 - **Who receives the late-return fee** (C-57) — **DEFERRED by the owner**
   (C-60), i.e. deliberately postponed. The amount is confirmed and calculated;
   its destination is not, and must not be inferred from the 35/65 split, which

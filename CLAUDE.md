@@ -35,7 +35,7 @@ matrix and a manual test scenario. Path-scoped rules live in
 A complete, audited, state-machine-driven **rental chain exists and works**:
 reservations, identity/bank/guarantee verification, payment, contract
 generation, signing, and admin approval are all implemented, and the
-repository has a **Feature suite of 585 test methods**.
+repository has a **Feature suite of 605 test methods**.
 
 | Area | Status |
 |---|---|
@@ -46,6 +46,7 @@ repository has a **Feature suite of 585 test methods**.
 | Identity / bank / guarantee verification | Mechanism implemented; **fake providers only; policy undefined** |
 | Contract generation, acceptance, OTP signing | Mechanism implemented; **text has no legal validity** |
 | Admin verification / rental-application / audit screens | Implemented |
+| Admin rental dashboard | **Implemented** — `admin/rental-dashboard`, real aggregates only, read-only, no actions of its own. Distinct from `admin.dashboard` (the shop's). Deferred policies appear as queues, never as invented figures (docs/operations/OPERATIONS_AND_CUSTODY.md §19) |
 | Reservation release (early / late return) | Implemented — the device is released the day after the ACTUAL return (C-53), and a late rental releases nothing until the device is physically back (C-57). **Timed expiry of an unpaid hold is still not implemented** (B10; no unpaid hold exists) |
 | Post-approval lifecycle | Active, Returned and Closed **implemented** — Active/Returned by delivery/return operations, Closed by the readiness-gated `close()` |
 | Owner / lessor domain | Implemented — owners, mixed fleet, serials, admin review |
@@ -732,7 +733,7 @@ Note: `docs/rental-flow-fa.md` describes the **architecture as built**, which in
 several places differs from confirmed business policy (reservation ordering,
 KYC gating, device units). Its header now carries that warning and links to the
 confirmed-decisions document. Its test counts are kept in step with the
-verified Feature run (`585 tests, 2729 assertions`).
+verified Feature run (`605 tests, 2849 assertions`).
 
 ---
 

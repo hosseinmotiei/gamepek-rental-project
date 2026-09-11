@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\ProductController as AdminProductController;
 use App\Http\Controllers\Admin\ProductOptionController as AdminProductOptionController;
 use App\Http\Controllers\Admin\QuickCategoryController as AdminQuickCategoryController;
 use App\Http\Controllers\Admin\RentalApplicationController as AdminRentalApplicationController;
+use App\Http\Controllers\Admin\RentalDashboardController as AdminRentalDashboardController;
 use App\Http\Controllers\Admin\ReportController as AdminReportController;
 use App\Http\Controllers\Admin\SettingsController as AdminSettingsController;
 use App\Http\Controllers\Admin\ShippingMethodController as AdminShippingMethodController;
@@ -432,6 +433,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{verification}/approve', [AdminVerificationController::class, 'approve'])->name('approve');
             Route::post('/{verification}/reject', [AdminVerificationController::class, 'reject'])->name('reject');
         });
+
+        // The rental operations dashboard: read-only, one page, no actions of
+        // its own. Distinct from admin.dashboard, which answers the shop's
+        // questions rather than the rental business's.
+        Route::get('/rental-dashboard', [AdminRentalDashboardController::class, 'index'])->name('rental-dashboard');
 
         Route::prefix('rental-applications')->name('rental-applications.')->group(function () {
             Route::get('/', [AdminRentalApplicationController::class, 'index'])->name('index');

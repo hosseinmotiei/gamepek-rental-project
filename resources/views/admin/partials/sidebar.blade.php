@@ -192,6 +192,11 @@
         <div class="my-2 border-t border-white/10"></div>
         <p class="text-[10px] text-white/30 px-3 mb-1 uppercase tracking-widest">اجاره</p>
         @can('view_rental_applications')
+        <a href="{{ route('admin.rental-dashboard') }}"
+           class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white text-sm {{ request()->routeIs('admin.rental-dashboard') ? 'active' : '' }}">
+            <i class="fa-solid fa-gauge-high w-5 text-center text-blue-300"></i>
+            <span>داشبورد اجاره</span>
+        </a>
         <a href="{{ route('admin.rental-applications.index') }}"
            class="sidebar-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-white text-sm {{ request()->routeIs('admin.rental-applications.*') ? 'active' : '' }}">
             <i class="fa-solid fa-file-signature w-5 text-center text-blue-300"></i>

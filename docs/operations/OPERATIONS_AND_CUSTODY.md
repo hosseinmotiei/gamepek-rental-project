@@ -803,6 +803,44 @@ disagreement, and no date invented for it); damage money taken after the note
 went to the owner; any wallet entry claiming to be a late fee, which no
 confirmed rule authorises.
 
+## 19. The admin rental dashboard -- IMPLEMENTED
+
+`admin/rental-dashboard` (`Admin\RentalDashboardController` +
+`App\Services\Rental\RentalDashboardMetrics`), gated on
+`view_rental_applications`. It is the rental counterpart of the shop's
+`admin.dashboard`, not a replacement for it.
+
+READ-ONLY, and tested to be: opening it derives no state, completes no
+operation, moves no custody and writes nothing. It offers no actions of its
+own -- every action stays on the screen that owns it, with its own permission
+check.
+
+What it shows, all from real aggregates: where every application stands and the
+final-approval queue; open operations by type, including the
+`awaiting_device_allocation` queue no code may clear; what each Returned rental
+still needs before it can close; damage assessed vs damage received; where the
+physical notes are; settlement calculated vs credited; fleet size, units out
+with customers and products with no device at all; overdue rentals; reconciler
+findings by code; the last completed movements.
+
+TWO RULES IT FOLLOWS.
+
+1. **Money is labelled by what it is.** `assessed`, `calculated` and `credited`
+   are never summed into one figure. An assessed damage is not a receivable --
+   there is no payment deadline -- and a calculated settlement is not a payment.
+2. **A deferred policy is never given a number.** The late-return section
+   carries no amount at all: the fee's recipient is deferred (C-60), so the
+   dashboard reports the overdue QUEUE and says in plain Persian that the fee
+   is calculated only, enters no settlement and has no "settle" action.
+
+QUERY BUDGET. Every section is a fixed set of aggregates plus at most one
+bounded (10-row) eager-loaded list; a test doubles the data and asserts the
+query count does not move. The single exception is the integrity section, which
+delegates to the reconciler -- a record-by-record diagnostic whose cost grows
+with the data by design. It is not reimplemented (one definition of a
+contradiction), and `snapshot(withIntegrity: false)` exists to measure or
+render without it.
+
 ## 12. Delivery / customer custody feasibility analysis -- superseded by §13
 
 A task requested adding the `gamepek -> customer`, `customer -> gamepek` and
