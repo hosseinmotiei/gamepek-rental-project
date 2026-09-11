@@ -103,6 +103,92 @@ class RentalEndToEndLifecycleTest extends TestCase
             ->count();
     }
 
+    // ── The rungs cannot be reached without their physical evidence ──────
+
+    /**
+     * CONFIRMED: Approved becomes Active ONLY after the delivery, and Active
+     * becomes Returned ONLY after the customer return.
+     *
+     * RentalOperationService asks for those moves after a handover it has just
+     * completed, so the normal path is safe by construction. This drives the
+     * orchestrator DIRECTLY -- the way a console command, an import or a future
+     * screen would -- and proves the rule is enforced by the mover itself, not
+     * only by its well-behaved caller.
+     */
+    public function test_the_lifecycle_refuses_to_advance_without_the_physical_operation_behind_it(): void
+    {
+        $customer = $this->customer('09170009001');
+        $application = $this->signedApplication($customer);
+        $device = $this->ownerDevice($application->product, '09170009002', 'E2E-GUARD-1');
+
+        $orchestrator = app(RentalChainOrchestrator::class);
+        $orchestrator->approve($application, $this->admin, null);
+
+        $reservation = $application->refresh()->reservation()->firstOrFail();
+        $operations = app(RentalOperationService::class);
+        $custody = app(DeviceCustodyService::class);
+
+        // The console is in GamePek's hands, but nothing has been delivered.
+        $pickup = $this->operation($reservation, RentalOperationType::OwnerDevicePickup);
+        $operations->attachDevice($pickup, $device, $this->admin);
+        $operations->start($pickup->refresh(), $this->admin);
+        $custody->requestFromOwner($pickup->refresh(), $this->admin);
+        $custody->recordHandoverToGamePek($pickup->refresh(), $this->admin);
+
+        try {
+            $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Active, $this->admin);
+            $this->fail('A rental must not become Active without a completed delivery.');
+        } catch (\RuntimeException) {
+            // expected
+        }
+
+        $this->assertSame(RentalApplicationState::Approved, $application->refresh()->state);
+        $this->assertSame(0, $this->transitionsTo($application->id, RentalApplicationState::Active));
+        $this->assertTrue(
+            DB::table('audit_events')->where('action', 'rental_application.transition_denied')->exists(),
+            'a refused transition must leave evidence',
+        );
+
+        // An open, started delivery is still not a delivered one.
+        $delivery = $operations->openDeliveryForReservation($reservation->refresh(), $this->admin);
+        $operations->start($delivery->refresh(), $this->admin);
+        $custody->requestDeliveryToCustomer($delivery->refresh(), $this->admin);
+
+        try {
+            $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Active, $this->admin);
+            $this->fail('A requested handover is not a completed one.');
+        } catch (\RuntimeException) {
+            // expected
+        }
+
+        $this->assertSame(RentalApplicationState::Approved, $application->refresh()->state);
+
+        // The real handover, and the rung is reached normally.
+        $custody->recordDeliveryToCustomer($delivery->refresh(), $this->admin);
+        $this->assertSame(RentalApplicationState::Active, $application->refresh()->state);
+        $this->assertSame(1, $this->transitionsTo($application->id, RentalApplicationState::Active));
+
+        // The same rule one rung up: no return, no Returned.
+        try {
+            $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Returned, $this->admin);
+            $this->fail('A rental must not become Returned without a completed customer return.');
+        } catch (\RuntimeException) {
+            // expected
+        }
+
+        $this->assertSame(RentalApplicationState::Active, $application->refresh()->state);
+        $this->assertNull($reservation->fresh()->returned_on, 'a refused move must not release the device');
+
+        $return = $operations->openReturnForReservation($reservation->refresh(), $this->admin);
+        $operations->start($return->refresh(), $this->admin);
+        $custody->requestReturnFromCustomer($return->refresh(), $this->admin);
+        $custody->recordReturnToGamePek($return->refresh(), $this->admin);
+
+        $this->assertSame(RentalApplicationState::Returned, $application->refresh()->state);
+        $this->assertSame(now()->toDateString(), $reservation->fresh()->returned_on->toDateString());
+        $this->assertSame([], app(OperationCustodyReconciler::class)->findings()->all());
+    }
+
     // ── The full flow ────────────────────────────────────────────────────
 
     public function test_the_complete_confirmed_lifecycle_through_the_http_routes(): void

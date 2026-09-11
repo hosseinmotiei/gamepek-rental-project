@@ -6,8 +6,11 @@ use App\Enums\ContractState;
 use App\Enums\GuaranteeState;
 use App\Enums\IdentityState;
 use App\Enums\RentalApplicationState;
+use App\Enums\RentalOperationState;
+use App\Enums\RentalOperationType;
 use App\Models\RentalApplication;
 use App\Models\RentalApplicationTransition;
+use App\Models\RentalOperation;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Contract\Contracts\SignatureProviderInterface;
@@ -403,6 +406,12 @@ class RentalChainOrchestrator
             throw new \RuntimeException('سیاست این مرحله از چرخه اجاره هنوز تعریف نشده است.');
         }
 
+        // Audited BEFORE the transaction, so a denial survives the throw that
+        // would otherwise roll its own audit row back. Re-checked under the
+        // lock below, where the throw is what matters and the record already
+        // exists.
+        $this->assertPhysicalEvidenceFor($application, $target, $actor, audit: true);
+
         return DB::transaction(function () use ($application, $target, $actor) {
             $locked = RentalApplication::where('id', $application->id)->lockForUpdate()->first();
 
@@ -417,6 +426,8 @@ class RentalChainOrchestrator
                 throw new \RuntimeException('این درخواست در وضعیت لازم برای این مرحله نیست.');
             }
 
+            $this->assertPhysicalEvidenceFor($locked, $target, $actor, audit: false);
+
             $from = $locked->state;
             $this->commit($locked, $from, $target, null, $actor);
 
@@ -424,6 +435,79 @@ class RentalChainOrchestrator
 
             return $application;
         });
+    }
+
+    /**
+     * The physical fact each post-approval rung REQUIRES, checked here.
+     *
+     * CONFIRMED RULES: a rental becomes Active only after GamePek physically
+     * delivered the device to the customer, and Returned only after GamePek
+     * physically received it back. Until now those rules lived in the caller --
+     * RentalOperationService only asks for the move after a handover it has
+     * just completed -- which is correct but is discipline, not a guard. Any
+     * future caller (a command, an import, a new screen) could have moved a
+     * rental to Active with no delivery behind it, and the contradiction would
+     * only surface later in the reconciler.
+     *
+     * So the evidence is verified here, under the same lock as the move and
+     * inside the same transaction: a COMPLETED operation of the matching type,
+     * carrying a handover whose possession actually moved. The legitimate path
+     * is unaffected -- the operation is completed and its transfer written
+     * before this runs.
+     *
+     * This invents no policy. It refuses a state whose confirmed precondition
+     * is absent, and says so.
+     *
+     * @param  bool  $audit  true on the pre-transaction pass, so the denial is
+     *                       durable; false on the re-check under the lock,
+     *                       which must not record it twice.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    private function assertPhysicalEvidenceFor(
+        RentalApplication $application,
+        RentalApplicationState $target,
+        ?User $actor,
+        bool $audit,
+    ): void {
+        $required = match ($target) {
+            RentalApplicationState::Active => RentalOperationType::CustomerDelivery,
+            RentalApplicationState::Returned => RentalOperationType::CustomerReturn,
+            default => null,
+        };
+
+        if ($required === null) {
+            return;
+        }
+
+        $evidenced = RentalOperation::where('rental_application_id', $application->id)
+            ->where('type', $required->value)
+            ->where('state', RentalOperationState::Completed->value)
+            ->whereHas('custodyTransfer', fn ($q) => $q->possessionMoved())
+            ->exists();
+
+        if ($evidenced) {
+            return;
+        }
+
+        if ($audit) {
+            AuditLogger::log(
+                action: 'rental_application.transition_denied',
+                resourceType: 'RentalApplication',
+                resourceId: $application->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: [
+                    'from' => $application->state->value,
+                    'to' => $target->value,
+                    'missing' => $required->value.'_completed_with_custody_transfer',
+                ],
+                actor: $actor,
+            );
+        }
+
+        throw new \RuntimeException($target === RentalApplicationState::Active
+            ? 'تا زمانی که تحویل دستگاه به مشتری ثبت و تکمیل نشده باشد، اجاره فعال نمی‌شود.'
+            : 'تا زمانی که دریافت دستگاه از مشتری ثبت و تکمیل نشده باشد، اجاره بازگشت‌خورده نمی‌شود.');
     }
 
     /**

@@ -3,13 +3,18 @@
 namespace Tests\Feature;
 
 use App\Enums\RentalApplicationState;
+use App\Enums\RentalOperationType;
 use App\Models\AuditEvent;
+use App\Models\Device;
 use App\Models\GuaranteeInquiry;
 use App\Models\RentalApplication;
 use App\Models\RentalApplicationTransition;
+use App\Models\RentalOperation;
 use App\Models\User;
 use App\Services\Otp\OtpProviderInterface;
+use App\Services\Rental\DeviceCustodyService;
 use App\Services\Rental\RentalChainOrchestrator;
+use App\Services\Rental\RentalOperationService;
 use Database\Seeders\ContractTemplateSeeder;
 use Database\Seeders\UserSeeder;
 use Illuminate\Database\Eloquent\MassAssignmentException;
@@ -380,10 +385,14 @@ class RentalPostApprovalLifecycleTest extends TestCase
      */
     public function test_the_mechanism_is_idempotent_and_ordered(): void
     {
-        $application = $this->approvedApplication();
+        // The delivery is what produces Active (a confirmed rule the mover now
+        // verifies for itself), so the fixture performs it. What is under test
+        // here is the MECHANISM on top of that: repeating the move writes
+        // nothing, and the rungs stay in order.
+        $application = $this->deliveredApplication();
         $orchestrator = app(RentalChainOrchestrator::class);
 
-        $orchestrator->transitionPostApproval($application, RentalApplicationState::Active, $this->admin);
+        $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Active, $this->admin);
         $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Active, $this->admin);
         $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Active, $this->admin);
 
@@ -394,7 +403,9 @@ class RentalPostApprovalLifecycleTest extends TestCase
                 ->where('to_state', RentalApplicationState::Active->value)->count(),
         );
 
-        // Returned is a confirmed rung and follows Active, so it moves.
+        // Returned is a confirmed rung and follows Active -- once the customer
+        // return that produces it has actually happened.
+        $this->recordCustomerReturn($application);
         $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Returned, $this->admin);
         $this->assertSame(RentalApplicationState::Returned, $application->refresh()->state);
 
@@ -510,6 +521,46 @@ class RentalPostApprovalLifecycleTest extends TestCase
         app(RentalChainOrchestrator::class)->approve($application, $this->admin, null);
 
         return $application->refresh();
+    }
+
+    /**
+     * Approved, with the console actually delivered to the customer -- so the
+     * rental is already Active, by the confirmed route.
+     */
+    private function deliveredApplication(): RentalApplication
+    {
+        $application = $this->approvedApplication();
+
+        $reservation = $application->reservation()->firstOrFail();
+        $device = Device::where('product_id', $application->product->id)->rentable()->firstOrFail();
+
+        $operations = app(RentalOperationService::class);
+        $custody = app(DeviceCustodyService::class);
+
+        $pickup = RentalOperation::where('rental_reservation_id', $reservation->id)
+            ->where('type', RentalOperationType::OwnerDevicePickup->value)->firstOrFail();
+        $operations->attachDevice($pickup, $device, $this->admin);
+
+        $delivery = $operations->openDeliveryForReservation($reservation->refresh(), $this->admin);
+        $operations->start($delivery->refresh(), $this->admin);
+        $custody->requestDeliveryToCustomer($delivery->refresh(), $this->admin);
+        $custody->recordDeliveryToCustomer($delivery->refresh(), $this->admin);
+
+        return $application->refresh();
+    }
+
+    /** The handover that produces Returned. */
+    private function recordCustomerReturn(RentalApplication $application): void
+    {
+        $reservation = $application->reservation()->firstOrFail();
+
+        $operations = app(RentalOperationService::class);
+        $custody = app(DeviceCustodyService::class);
+
+        $return = $operations->openReturnForReservation($reservation->refresh(), $this->admin);
+        $operations->start($return->refresh(), $this->admin);
+        $custody->requestReturnFromCustomer($return->refresh(), $this->admin);
+        $custody->recordReturnToGamePek($return->refresh(), $this->admin);
     }
 
     private function assertPostApprovalRefused(RentalApplicationState $target): void

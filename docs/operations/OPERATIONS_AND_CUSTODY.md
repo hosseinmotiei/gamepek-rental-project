@@ -803,6 +803,25 @@ disagreement, and no date invented for it); damage money taken after the note
 went to the owner; any wallet entry claiming to be a late fee, which no
 confirmed rule authorises.
 
+## 20. The lifecycle rungs verify their own evidence
+
+`RentalChainOrchestrator::transitionPostApproval()` used to move a rental on
+config trigger plus state adjacency alone. The confirmed rules -- Active only
+after the delivery, Returned only after the customer return -- lived entirely in
+the CALLER: `RentalOperationService` asks for the move only after a handover it
+has just completed. Correct, but discipline rather than a guard, and a console
+command, an import or a future screen could have produced an Active rental with
+no delivery behind it. The reconciler would then report
+`active_without_delivery` after the fact.
+
+The mover now checks for itself, under the same lock and inside the same
+transaction: a COMPLETED operation of the matching type carrying a handover
+whose possession actually moved. The legitimate path is unaffected (the
+operation and its transfer are written first), the denial is audited as
+`rental_application.transition_denied` BEFORE the transaction so it survives the
+throw, and the check is repeated under the lock. No policy was invented -- a
+confirmed precondition is simply enforced where the state is written.
+
 ## 19. The admin rental dashboard -- IMPLEMENTED
 
 `admin/rental-dashboard` (`Admin\RentalDashboardController` +
