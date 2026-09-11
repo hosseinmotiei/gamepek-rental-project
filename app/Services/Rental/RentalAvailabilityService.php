@@ -23,8 +23,11 @@ use Illuminate\Support\Carbon;
  * the devices already attached (DeviceAssignmentFeasibility). A reservation's
  * blocking period ends at the customer's ACTUAL return when that was early
  * (RentalReservation::blockedUntil), so an early-returned device is free again
- * for its remaining days. Only reservations that block (paid/active) count;
- * an unpaid application blocks nothing.
+ * for its remaining days. CONFIRMED late-return rule, the mirror image: a
+ * device still with the customer past the contractual end date is NOT released
+ * on that date -- it stays unavailable until the physical return is recorded,
+ * and becomes free the day after it. Only reservations that block (paid/active)
+ * count; an unpaid application blocks nothing.
  *
  * Eligible device = belongs to the product and is approved (Device::rentable).
  * Nothing here chooses or ranks a device, and nothing reads `_rental.blocked`.
@@ -238,7 +241,7 @@ class RentalAvailabilityService
             ->overlapping($productId, $from, '9999-12-31')
             ->blocking()
             ->when($ignoreReservationId, fn ($q) => $q->where('id', '!=', $ignoreReservationId))
-            ->get(['id', 'start_date', 'end_date', 'returned_on', 'device_id'])
+            ->get(['id', 'start_date', 'end_date', 'returned_on', 'device_id', 'rental_application_id'])
             ->map(fn (RentalReservation $r) => [
                 'id' => $r->id,
                 'start' => $r->start_date->toDateString(),

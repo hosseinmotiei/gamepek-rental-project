@@ -135,11 +135,16 @@ class RentalApplicationController extends Controller
         // notes, evidence references and internal records are not passed.
         $damage = app(RentalDamageAssessmentService::class)->statusFor($application->id);
 
+        // The confirmed late-return position. Calculation only -- nothing has
+        // been charged, and the view says so.
+        $late = $application->reservation?->lateReturn();
+
         return view('rental.application', [
             'application' => $application,
             'damageStatus' => $damage['status'],
             'damageAmount' => $damage['assessment']?->amount,
             'noteStatus' => app(GuaranteeNoteService::class)->statusFor($application->id),
+            'lateReturn' => $late !== null && $late->isLate ? $late : null,
         ]);
     }
 

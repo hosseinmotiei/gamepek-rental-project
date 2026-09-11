@@ -33,7 +33,10 @@ use Illuminate\Support\Facades\DB;
  * mutually exclusive, enforced under a row lock and by unique indexes.
  *
  * CONFIRMED since: a GamePek-owned device has no owner, so for unpaid damage
- * the note stays with GamePek (retainByGamePek). A rental cancelled after
+ * the note stays with GamePek (retainByGamePek). That retention is NOT the end
+ * of the story -- GamePek still physically holds the note, so the customer may
+ * pay the assessed damage later and get it back. A return or an owner transfer
+ * is what ends it; after either, nothing more can be recorded. A rental cancelled after
  * the note was received leaves it HELD: cancellation returns, transfers and
  * retains nothing, and no future action for that case is invented here.
  *
@@ -90,6 +93,9 @@ class GuaranteeNoteService
 
             $damage = $this->damage->statusFor($app->id);
 
+            // CONFIRMED: a note GamePek retained for an unpaid damage goes back
+            // to the customer once they pay it -- so `paid` below is reached
+            // both from a straight payment and from a retained note.
             return match ($damage['status']) {
                 RentalDamageAssessmentService::NO_DAMAGE => [
                     'basis' => GuaranteeNoteEvent::BASIS_NO_DAMAGE,
@@ -212,13 +218,26 @@ class GuaranteeNoteService
                     throw new \RuntimeException('دریافت سفته از مشتری هنوز ثبت نشده است.');
                 }
 
-                // Returned XOR transferred: whichever happened first stands.
+                // Returned XOR transferred: whichever happened first stands,
+                // and neither can be followed by anything -- the note has
+                // physically left GamePek.
+                //
+                // Retention is NOT in that list (CONFIRMED): GamePek still
+                // holds the note, so paying the damage afterwards can still
+                // send it back to the customer. returnToCustomer()'s own check
+                // is what guarantees the damage really was paid first.
                 if (array_intersect($events, [
                     GuaranteeNoteEvent::RETURNED_TO_CUSTOMER,
                     GuaranteeNoteEvent::TRANSFERRED_TO_OWNER,
-                    GuaranteeNoteEvent::RETAINED_BY_GAMEPEK,
                 ]) !== []) {
                     throw new \RuntimeException('سفته این اجاره قبلاً تعیین تکلیف شده است.');
+                }
+
+                // Retained and then handed to an owner would mean two different
+                // final destinations for one physical document.
+                if ($event === GuaranteeNoteEvent::TRANSFERRED_TO_OWNER
+                    && in_array(GuaranteeNoteEvent::RETAINED_BY_GAMEPEK, $events, true)) {
+                    throw new \RuntimeException('سفته این اجاره نزد گیم‌پک نگه داشته شده است و به مالک تحویل نمی‌شود.');
                 }
             }
 
@@ -230,7 +249,13 @@ class GuaranteeNoteService
                 $row->guarantee_id = $guarantee->id;
                 $row->rental_application_id = $app->id;
                 $row->event = $event;
-                $row->final_marker = $event === GuaranteeNoteEvent::RECEIVED ? null : 1;
+                // The marker is the database's own return-XOR-transfer lock
+                // (unique(guarantee_id, final_marker)). Receiving and retaining
+                // both leave the note with GamePek, so neither claims it.
+                $row->final_marker = in_array($event, [
+                    GuaranteeNoteEvent::RECEIVED,
+                    GuaranteeNoteEvent::RETAINED_BY_GAMEPEK,
+                ], true) ? null : 1;
                 $row->basis = $fields['basis'] ?? null;
                 $row->rental_damage_assessment_id = $fields['rental_damage_assessment_id'] ?? null;
                 $row->owner_id = $fields['owner_id'] ?? null;

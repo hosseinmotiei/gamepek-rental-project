@@ -283,8 +283,10 @@ belonging to another owner.
 - Condition grading, damage taxonomy, inspection approval or rejection
   (free-text inspection evidence exists -- §14)
 - Courier or third-party delivery
-- Damage valuation, late return, lost device
-- Guarantee, deposit, refund, cancellation, settlement, wallet
+- Damage valuation and lost device (late return IS implemented -- §18 --
+  though the destination of its fee is not decided, so nothing is charged)
+- Refund, cancellation and deposit rules (there is no deposit at all, C-49).
+  Settlement, the promissory note and the wallet ARE implemented -- §15, §16
 - Owner penalties of any kind
 - SMS on any operational event
 - Receipts, documents or signatures for a handover. `reference_number` is an
@@ -697,9 +699,86 @@ with the return handover.
 calendar marks only days with no free unit; a refused booking shows the
 existing Persian conflict message. No waitlist is mentioned.
 
-Still NOT decided: what happens when all devices are busy (C-56); late
-return; whether a disabled device's future unassigned bookings are
-re-planned; device selection policy (still manual).
+Still NOT decided: what happens when all devices are busy (C-56); whether a
+disabled device's future unassigned bookings are re-planned; device selection
+policy (still manual). Late return is now decided and implemented -- §18.
+
+## 18. Late return, and the retained note -- IMPLEMENTED
+
+### 18.1 Availability (C-57)
+
+The mirror image of the early return in §17. A device that has not come back by
+the contractual end date is **not released on that date**: while the rental is
+still `Active` past its `end_date`, `RentalReservation::blockedUntil()` answers
+`OPEN_ENDED` (`9999-12-31`), so every availability question -- search, the
+product calendar, `isFree()`, device attachment -- treats the device as taken
+with no known free date. When the physical return completes, the same
+`returned_on` the early-return path writes (from the `customer_to_gamepek`
+handover, inside its transaction) becomes the block's last day: the return day
+itself stays occupied and the device is offered again **from the next day**.
+The days between the contractual end and the actual return stay blocked too --
+the device really was out on them.
+
+`scopeOverlapping` carries the same rule in SQL (`BLOCKED_UNTIL_SQL`), so the
+query and the PHP answer cannot drift.
+
+The contractual `start_date` and `end_date` are **never** rewritten by
+lateness, and a late rental neither closes nor settles itself.
+
+One deliberate exception keeps legacy rows safe: the open-ended block applies
+only while the application is `Active`. A rental that is `Returned` or `Closed`
+but has no `returned_on` (a row from before that column existed) falls back to
+its contractual end date and does not block its device forever.
+
+### 18.2 The late charge (C-57)
+
+`App\Support\Rental\LateReturn` -- pure, read-only, no writes anywhere:
+
+```
+late days = actual return date − contractual end date   (whole days, min 0)
+base      = late days × rental_reservations.daily_rate
+surcharge = 15% of base, rounded DOWN to the Toman
+total     = base + surcharge
+```
+
+Returned on the end date = 0 late days; the next day = 1. While the device is
+still out the count runs against today and is marked `stillOut`, i.e. not
+final. The daily cost is the reservation's own snapshotted `daily_rate`, so no
+new price model was invented; the extra-controller fee and the duration
+discount are excluded, because whether they extend into a late period is not
+decided.
+
+**Nothing is charged.** No ledger entry, no settlement effect, no addition to
+`rental_total`, no automatic closure. Who receives the late fee -- owner,
+GamePek, or a split -- is undecided, so a settlement on a late rental records
+`settlement.late_fee_undistributed` in the audit trail and settles the rental
+price exactly as it would for an on-time return.
+
+### 18.3 A retained note is not terminal (C-58)
+
+A GamePek-owned device has no owner to hand the note to, so an unpaid damage
+leaves the note **with GamePek**. GamePek still physically holds it, so:
+
+- `retained_by_gamepek` no longer claims `final_marker`; that marker exists
+  only to make "returned to the customer" and "handed to the owner" mutually
+  exclusive at the database level, and retention is neither;
+- a damage payment is refused only once the note has **left** GamePek
+  (returned or transferred) -- retention does not block it;
+- after such a payment the note goes back to the customer with basis
+  `damage_paid`, exactly as a straight payment would;
+- retained-then-transferred-to-an-owner is refused: one physical document
+  cannot have two destinations;
+- re-pricing still stops at retention, so the amount the customer can pay is
+  the amount that was recorded.
+
+Whether that payment is still possible **after the rental has been closed** is
+NOT decided; today it is accepted only while the rental is `Returned`.
+
+**Reconciler additions:** a device released while it is still in the customer's
+custody; a legacy return with no release date (classified apart from a real
+disagreement, and no date invented for it); damage money taken after the note
+went to the owner; any wallet entry claiming to be a late fee, which no
+confirmed rule authorises.
 
 ## 12. Delivery / customer custody feasibility analysis -- superseded by §13
 

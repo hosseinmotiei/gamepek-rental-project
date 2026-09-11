@@ -35,7 +35,7 @@ matrix and a manual test scenario. Path-scoped rules live in
 A complete, audited, state-machine-driven **rental chain exists and works**:
 reservations, identity/bank/guarantee verification, payment, contract
 generation, signing, and admin approval are all implemented, and the
-repository has a **test suite of 171 test methods**.
+repository has a **Feature suite of 573 test methods**.
 
 | Area | Status |
 |---|---|
@@ -46,7 +46,7 @@ repository has a **test suite of 171 test methods**.
 | Identity / bank / guarantee verification | Mechanism implemented; **fake providers only; policy undefined** |
 | Contract generation, acceptance, OTP signing | Mechanism implemented; **text has no legal validity** |
 | Admin verification / rental-application / audit screens | Implemented |
-| Reservation release or expiry | **Not implemented** |
+| Reservation release (early / late return) | Implemented — the device is released the day after the ACTUAL return (C-53), and a late rental releases nothing until the device is physically back (C-57). **Timed expiry of an unpaid hold is still not implemented** (B10; no unpaid hold exists) |
 | Post-approval lifecycle | Active, Returned and Closed **implemented** — Active/Returned by delivery/return operations, Closed by the readiness-gated `close()` |
 | Owner / lessor domain | Implemented — owners, mixed fleet, serials, admin review |
 | Operational task domain | Implemented — owner pickup, customer delivery, customer return, owner return |
@@ -54,14 +54,16 @@ repository has a **test suite of 171 test methods**.
 | Live payment gateway | Not implemented — no credentials |
 | Live KYC / bank / cheque providers | Not implemented — none chosen |
 | Rental SMS notifications | Not implemented — no approved copy (B13) |
-| Wallet backend (`WalletService`, persisted balance + immutable ledger) | Implemented — nothing calls `credit()`/`debit()` yet |
-| Wallet-driven settlement, payout, deposit, refund, damage charges | **Not implemented** |
+| Wallet backend (`WalletService`, persisted balance + immutable ledger) | Implemented — and used: the owner's settlement share and paid damage are credited through it |
+| Wallet-driven settlement and damage receipts | **Implemented** — owner share to the owner's wallet (`finalize()`), paid damage in full to the GamePek system wallet (`recordPayment()`) |
+| Wallet-driven payout, deposit, refund | **Not implemented** — there is no deposit (C-49) and no payout-out rule; nothing debits a wallet in the rental flow |
 | Customer profile wallet tab | Still **frontend `localStorage` prototype**, not connected to the real backend |
 | Availability | **Physical-device capacity** (C-55); early return frees the device (C-53); no mid-rental reclaim (C-54) — docs/operations/OPERATIONS_AND_CUSTODY.md §17 |
 | Device allocation to a reservation | Manual admin attachment implemented (`attachDevice()`), now with device-level overlap safety — **selection policy itself remains undecided (section 10.3b)** |
-| Delivery / customer return / owner return | Implemented (staff-driven), all four custody legs. Inspection: **free-text append-only evidence only**. Damage: **expert amount recorded (append-only), never charged** (docs/operations/OPERATIONS_AND_CUSTODY.md §14–§15) |
+| Delivery / customer return / owner return | Implemented (staff-driven), all four custody legs. Inspection: **free-text append-only evidence only**. Damage: expert amount recorded (append-only); when the customer pays it, the payment is recorded once and credited in full to the GamePek wallet — **no formula, no automatic charge** (docs/operations/OPERATIONS_AND_CUSTODY.md §14–§15) |
+| Late return | **Implemented** (C-57): the device stays unavailable until it is physically back; late days cost the reservation's daily rate **+15%**. Calculation only — **who receives the late fee is undecided**, so nothing is charged or settled (docs/operations/OPERATIONS_AND_CUSTODY.md §18) |
 | Settlement (35/65) | **Implemented**: `rental_total` only, owner credited once to the Owner Wallet via `WalletService`. **Manual by decision (C-48)** — no scheduler |
-| Promissory note / damage payment | **Implemented** (`GuaranteeNoteService`, `rental_damage_payments`); the note is never money; paid damage credits the GamePek system wallet in full (C-50) |
+| Promissory note / damage payment | **Implemented** (`GuaranteeNoteService`, `rental_damage_payments`); the note is never money; paid damage credits the GamePek system wallet in full (C-50). A note **retained** by GamePek is not terminal (C-58): the customer may pay later and get it back; a note handed to an owner is terminal |
 | Closure | **Implemented**: `RentalChainOrchestrator::close()`, explicit and gated by `RentalClosureReadiness`; never automatic (docs/operations/OPERATIONS_AND_CUSTODY.md §16) |
 | Receipt/signature for a handover | Receipt reference recorded at the door; **whether a digital signature may replace the paper one is undecided** |
 
@@ -191,9 +193,12 @@ states, and it is still the ONLY thing that writes them.
 - **Returned** is stable: `nextState()` never re-derives Approved, Active or
   Returned, so `advance()` cannot move a post-approval rental backwards. The
   `owner_return` operation (GamePek → owner) changes no application state.
-- **Returned → Closed** is still refused: `config('rental.lifecycle.closure_trigger')`
-  is `null`, so it records `rental_application.policy_undefined`. Closure
-  waits on deposit release (B4), damage assessment and media retention (B11).
+- **Returned → Closed never happens automatically:** `config('rental.lifecycle.closure_trigger')`
+  is `null`, so the derived path records `rental_application.policy_undefined`.
+  Closing is an explicit act — `RentalChainOrchestrator::close()`, gated by
+  `RentalClosureReadiness` (return, inspection, damage outcome, note outcome,
+  owner window, owner return, settlement). There is no deposit to release
+  (C-49); media retention (B11) is reported but does not block.
 
 `nextState()` still derives none of these, and **no route posts a state** —
 the two staff routes that exist open an *operation*, whose completion asks
@@ -207,7 +212,10 @@ Related invariants worth preserving:
   JS for **live preview only**. Never accept a price, discount or total from
   the frontend.
 - `deposit` is **never** part of `payableNow`. The order total is
-  `payable_now`. **The deposit is never charged** — how it is held is B4.
+  `payable_now`. **No cash deposit exists at all** (C-49): the customer pays
+  the full rental up front and hands over a physical promissory note. The
+  legacy `_rental.deposit` figure is carried in the quote and the contract
+  template only; nothing charges, holds, settles or refunds it.
 - `App\Support\Rental\RentalItem` is the **single** reader of
   `attributes['_rental']`. Never index into that blob anywhere else.
 - `CartService::addItem()` **rejects** rentable products with a Persian
@@ -225,10 +233,12 @@ Related invariants worth preserving:
   throw once a row exists, so history cannot be edited even by a future
   mistake. An optional `idempotency_key`, unique per wallet at the database
   level, makes a retried `credit()`/`debit()` call a no-op instead of a
-  double movement. **No settlement, owner payout, deposit, refund or
-  damage-charge policy is implemented or invented here** — nothing in the
-  codebase calls `credit()`/`debit()` yet; each future caller decides its
-  own trigger and reason when it is built. The customer profile's wallet
+  double movement. The service invents no policy of its own; its callers
+  carry the confirmed rules — `RentalSettlementService::finalize()` credits
+  the owner's 65% once, and `RentalDamageAssessmentService::recordPayment()`
+  credits a paid damage in full to the GamePek system wallet. **No payout,
+  deposit or refund rule exists**, and nothing debits a wallet in the rental
+  flow. The customer profile's wallet
   tab remains a separate, unconnected `localStorage` prototype (§9.12).
 
 ---
@@ -517,9 +527,11 @@ or its own change.
     real data (`admin/wallet`); it has no credit/debit form, on purpose.
     **The customer profile's wallet tab (top-up, withdraw) is still
     `localStorage` in Blade and is untouched by this backend — the two are
-    not connected.** Nothing in the codebase calls `WalletService::credit()`
-    or `debit()` yet: no settlement, owner payout, deposit, refund or
-    damage-charge logic exists or is invented by this service. **Do not
+    not connected.** The real backend is written only by
+    `RentalSettlementService::finalize()` (owner share) and
+    `RentalDamageAssessmentService::recordPayment()` (paid damage to the
+    GamePek wallet); no payout, deposit or refund logic exists, and nothing
+    debits a wallet in the rental flow. **Do not
     treat the profile wallet tab's figures as real money**, and do not wire
     it to the real backend without a decision on what triggers a real
     movement.
@@ -719,8 +731,8 @@ There is **no API documentation**; `routes/api.php` is undocumented.
 Note: `docs/rental-flow-fa.md` describes the **architecture as built**, which in
 several places differs from confirmed business policy (reservation ordering,
 KYC gating, device units). Its header now carries that warning and links to the
-confirmed-decisions document. Its test counts were corrected to the verified
-`171 tests, 1140 assertions`.
+confirmed-decisions document. Its test counts are kept in step with the
+verified Feature run (`573 tests, 2653 assertions`).
 
 ---
 

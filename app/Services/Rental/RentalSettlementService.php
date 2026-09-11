@@ -12,6 +12,7 @@ use App\Models\RentalSettlementCredit;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Wallet\WalletService;
+use App\Support\Rental\LateReturn;
 use App\Support\Rental\SettlementSplit;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -28,8 +29,10 @@ use Illuminate\Support\Facades\DB;
  *  - The gross basis comes from config('rental.settlement.gross_basis'); an
  *    unset or unknown value is still refused and audited
  *    (`settlement.policy_undefined`) rather than guessed.
- *  - It never nets damage, deposit, penalties or refunds against the split.
- *    None of those rules exists.
+ *  - It never nets damage, deposit, penalties, late fees or refunds against the
+ *    split. None of those rules exists. A late return is calculated
+ *    (App\Support\Rental\LateReturn) and audited as undistributed, never added
+ *    to the gross and never credited to anyone.
  *  - GamePek-owned devices have no owner, so no 35/65 split applies and none
  *    is recorded.
  *
@@ -194,6 +197,31 @@ class RentalSettlementService
             }
 
             $split = SettlementSplit::of($this->grossFor($reservation, $basis));
+
+            // CONFIRMED: a late return costs the daily rate plus 15% for the
+            // late days. NOT CONFIRMED: who receives it. The 35/65 split is
+            // defined on rental_total, and no rule says a late fee joins it,
+            // goes to the owner, or stays with GamePek. So the settlement below
+            // is computed from rental_total exactly as for an on-time rental --
+            // the late fee is neither added to the gross nor split -- and the
+            // open question is recorded instead of answered.
+            $late = LateReturn::for($reservation);
+
+            if ($late->isLate) {
+                AuditLogger::log(
+                    action: 'settlement.late_fee_undistributed',
+                    resourceType: 'RentalReservation',
+                    resourceId: $reservation->id,
+                    result: AuditLogger::RESULT_DENIED,
+                    context: [
+                        'rental_application_id' => $application->id,
+                        'late_days' => $late->lateDays,
+                        'late_amount' => $late->total,
+                        'note' => 'late return fee calculated but its destination (owner / GamePek / split) is undecided; not settled',
+                    ],
+                    actor: $actor,
+                );
+            }
 
             try {
                 $settlement = new RentalSettlement;

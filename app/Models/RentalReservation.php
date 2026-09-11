@@ -2,13 +2,26 @@
 
 namespace App\Models;
 
+use App\Enums\RentalApplicationState;
 use App\Enums\ReservationState;
+use App\Support\Rental\LateReturn;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
+/**
+ * One paid booking of a product for a date range.
+ *
+ * WHICH STATE IS AUTHORITATIVE. `rental_applications.state` is the rental's
+ * lifecycle -- Approved, Active, Returned, Closed -- and
+ * RentalChainOrchestrator is its only writer. `rental_reservations.state`
+ * (ReservationState) is NOT a second lifecycle: it says only whether this
+ * booking blocks inventory (see scopeBlocking), and in the current flow a
+ * reservation is written once, as `paid`, and never advanced again. Nothing
+ * may read it to decide where a rental stands.
+ */
 class RentalReservation extends Model
 {
     protected $fillable = [
@@ -82,23 +95,76 @@ class RentalReservation extends Model
      */
     public function scopeOverlapping($query, int $productId, string $startDate, string $endDate)
     {
-        // The blocking period ends at the ACTUAL return when the customer
-        // brought the device back early, otherwise at the contractual end.
-        // Still the one overlap predicate in the codebase.
+        $today = now()->toDateString();
+
         return $query->where('product_id', $productId)
             ->where('start_date', '<=', $endDate)
-            ->whereRaw('LEAST(end_date, COALESCE(returned_on, end_date)) >= ?', [$startDate]);
+            ->whereRaw(self::BLOCKED_UNTIL_SQL.' >= ?', [$today, RentalApplicationState::Active->value, $startDate]);
     }
 
     /**
-     * The last day this reservation occupies its device: the actual return
-     * day after an early return, else the contractual end date.
+     * SQL twin of blockedUntil(), so the query and the PHP answer cannot drift.
+     * Bindings, in order: today, the Active state value.
+     */
+    public const BLOCKED_UNTIL_SQL = '(CASE
+        WHEN rental_reservations.returned_on IS NOT NULL THEN rental_reservations.returned_on
+        WHEN rental_reservations.end_date < ? AND EXISTS (
+            SELECT 1 FROM rental_applications ra
+            WHERE ra.id = rental_reservations.rental_application_id AND ra.state = ?
+        ) THEN \''.self::OPEN_ENDED.'\'
+        ELSE rental_reservations.end_date
+    END)';
+
+    /**
+     * The device is still physically out and no end date can be named yet.
+     * A far-future date rather than null, so it compares like any other.
+     */
+    public const OPEN_ENDED = '9999-12-31';
+
+    /**
+     * The last day this reservation occupies its device.
+     *
+     *  - returned: the day GamePek ACTUALLY received it back, whether that was
+     *    early (the remaining days are freed) or late (the extra days were
+     *    genuinely occupied and stay blocked);
+     *  - CONFIRMED late-return rule: past the contractual end with the device
+     *    still in the customer's hands, the device is not released at all --
+     *    it stays unavailable until the physical return is recorded, so this
+     *    answers OPEN_ENDED;
+     *  - otherwise the contractual end date.
+     *
+     * "Still in the customer's hands" is the rental being Active: a Returned or
+     * Closed rental whose `returned_on` was never written (rows from before
+     * that column existed) falls back to its contractual end and does NOT
+     * block the device forever.
      */
     public function blockedUntil(): Carbon
     {
-        return $this->returned_on !== null && $this->returned_on->lessThan($this->end_date)
-            ? $this->returned_on
-            : $this->end_date;
+        if ($this->returned_on !== null) {
+            return $this->returned_on;
+        }
+
+        if ($this->end_date->toDateString() < now()->toDateString() && $this->isStillWithCustomer()) {
+            return Carbon::parse(self::OPEN_ENDED);
+        }
+
+        return $this->end_date;
+    }
+
+    /** Is this rental still running, i.e. the device has not come back? */
+    public function isStillWithCustomer(): bool
+    {
+        // Deliberately a fresh query, not $this->application: the relation is
+        // rarely loaded here and strict mode forbids a lazy load. It only runs
+        // for a reservation already known to be past its end date.
+        return RentalApplication::whereKey($this->rental_application_id)->value('state')
+            === RentalApplicationState::Active;
+    }
+
+    /** The confirmed late-return position of this rental. Calculation only. */
+    public function lateReturn(?string $today = null): LateReturn
+    {
+        return LateReturn::for($this, $today);
     }
 
     /**

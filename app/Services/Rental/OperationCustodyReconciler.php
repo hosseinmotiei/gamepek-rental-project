@@ -135,6 +135,23 @@ class OperationCustodyReconciler
     /** returned_on disagrees with the customer-return handover. */
     public const RETURN_RELEASE_MISMATCH = 'return_release_mismatch';
 
+    /**
+     * A device returned before `returned_on` existed, so the release date was
+     * never recorded. Incomplete history, NOT an impossible state: the return
+     * itself is evidenced by a completed customer-return handover. No date is
+     * inferred for it.
+     */
+    public const LEGACY_RETURN_WITHOUT_RELEASE_DATE = 'legacy_return_without_release_date';
+
+    /** A device still in the customer's hands whose reservation stopped blocking. */
+    public const RELEASED_WHILE_STILL_OUT = 'released_while_still_out';
+
+    /** A wallet entry for a late fee, whose destination is undecided. */
+    public const LATE_FEE_WITHOUT_POLICY = 'late_fee_without_policy';
+
+    /** Damage money taken after the note had already gone to the owner. */
+    public const DAMAGE_PAYMENT_AFTER_NOTE_TRANSFER = 'damage_payment_after_note_transfer';
+
     /** The completed task and its transfer describe different legs. */
     public const TRANSFER_TYPE_MISMATCH = 'transfer_type_mismatch';
 
@@ -205,6 +222,10 @@ class OperationCustodyReconciler
             self::RESERVATION_DEVICE_PRODUCT_MISMATCH => 'دستگاه تخصیص‌یافته از مدل رزروشده نیست',
             self::OWNER_RECLAIM_DURING_RENTAL => 'دستگاه در میانه اجاره از چرخه خارج یا به مالک برگردانده شده است',
             self::RETURN_RELEASE_MISMATCH => 'تاریخ آزادشدن دستگاه با سابقه بازگشت آن هم‌خوان نیست',
+            self::LEGACY_RETURN_WITHOUT_RELEASE_DATE => 'بازگشت قدیمی بدون تاریخ آزادشدن ثبت‌شده (سابقه ناقص، نه وضعیت نادرست)',
+            self::RELEASED_WHILE_STILL_OUT => 'دستگاه هنوز نزد مشتری است اما رزرو آن دیگر دستگاه را اشغال نمی‌کند',
+            self::LATE_FEE_WITHOUT_POLICY => 'برای دیرکرد سند مالی ثبت شده اما مقصد آن تعیین نشده است',
+            self::DAMAGE_PAYMENT_AFTER_NOTE_TRANSFER => 'خسارت پس از تحویل سفته به مالک از مشتری دریافت شده است',
             self::TRANSFER_TYPE_MISMATCH => 'نوع سابقه تحویل با نوع عملیات یکسان نیست',
             self::DEVICE_MISMATCH => 'دستگاه عملیات با دستگاه سابقه تحویل یکسان نیست',
             self::TRANSFERRED_BUT_NOT_COMPLETED => 'تحویل ثبت شده اما عملیات بسته نشده است',
@@ -564,6 +585,31 @@ class OperationCustodyReconciler
             }
         }
 
+        // The note went to the owner precisely BECAUSE the damage was unpaid,
+        // and from then on the owner pursues it -- GamePek must not have taken
+        // the money as well. Either record contradicts the other, whichever
+        // came first.
+        RentalDamagePayment::query()
+            ->whereIn('rental_application_id', GuaranteeNoteEvent::query()
+                ->where('event', GuaranteeNoteEvent::TRANSFERRED_TO_OWNER)
+                ->select('rental_application_id'))
+            ->pluck('rental_application_id')
+            ->each(fn ($id) => $add(
+                self::DAMAGE_PAYMENT_AFTER_NOTE_TRANSFER,
+                'برای درخواست شماره '.$id.' هم پرداخت خسارت ثبت شده و هم سفته به مالک تحویل شده است.',
+            ));
+
+        // A late return is calculated but has no confirmed destination, so no
+        // ledger entry may exist for one. If one does, money moved on a rule
+        // nobody has made.
+        WalletTransaction::where('context->purpose', 'rental_late_fee')
+            ->orWhere('context->reason', 'rental_late_fee')
+            ->pluck('id')
+            ->each(fn ($id) => $add(
+                self::LATE_FEE_WITHOUT_POLICY,
+                'سند کیف پول شماره '.$id.' بابت دیرکرد ثبت شده است، اما مقصد مبلغ دیرکرد تعیین نشده است.',
+            ));
+
         // A deposit is never collected: a payable amount that equals rental
         // + delivery + deposit (with a real deposit figure) means it leaked in.
         RentalReservation::where('deposit_amount', '>', 0)
@@ -629,11 +675,50 @@ class OperationCustodyReconciler
 
         $released = RentalReservation::whereNotNull('returned_on')
             ->orWhereIn('id', $returnDates->keys())
-            ->get(['id', 'returned_on']);
+            ->get(['id', 'returned_on', 'start_date', 'end_date', 'rental_application_id']);
 
         foreach ($released as $reservation) {
-            if ($reservation->returned_on?->toDateString() !== $returnDates->get($reservation->id)) {
-                $add(self::RETURN_RELEASE_MISMATCH, 'تاریخ آزادشدن رزرو شماره '.$reservation->id.' با سابقه بازگشت دستگاه برابر نیست.');
+            $recorded = $reservation->returned_on?->toDateString();
+            $evidence = $returnDates->get($reservation->id);
+
+            if ($recorded === $evidence) {
+                continue;
+            }
+
+            // `returned_on` arrived after some rentals had already come back.
+            // Those rows have the handover that proves the return but no
+            // release date, which is a GAP, not a contradiction -- and nothing
+            // here invents a date to fill it. Reported under its own code so a
+            // real disagreement stays visible next to it.
+            if ($recorded === null) {
+                $add(
+                    self::LEGACY_RETURN_WITHOUT_RELEASE_DATE,
+                    'رزرو شماره '.$reservation->id.' سابقه بازگشت دارد اما تاریخ آزادشدن آن ثبت نشده است؛'
+                        .' این رزرو پیش از افزوده‌شدن این فیلد بازگشته است و تاریخی برای آن حدس زده نمی‌شود.',
+                );
+
+                continue;
+            }
+
+            $add(self::RETURN_RELEASE_MISMATCH, 'تاریخ آزادشدن رزرو شماره '.$reservation->id.' با سابقه بازگشت دستگاه برابر نیست.');
+        }
+
+        // CONFIRMED late-return rule: a device that is still with the customer
+        // must stay unavailable until it physically comes back. A reservation
+        // that has stopped occupying its device while the customer still holds
+        // it would offer that device to someone else.
+        $today = now()->toDateString();
+
+        foreach ($blocking->whereNotNull('device_id') as $reservation) {
+            $device = Device::whereKey($reservation->device_id)->first();
+
+            if ($device?->currentCustody() === CustodyActor::Customer
+                && $reservation->blockedUntil()->toDateString() < $today) {
+                $add(
+                    self::RELEASED_WHILE_STILL_OUT,
+                    'دستگاه شماره '.$reservation->device_id.' هنوز نزد مشتری است اما رزرو شماره '
+                        .$reservation->id.' از تاریخ '.$reservation->blockedUntil()->toDateString().' آزاد شده است.',
+                );
             }
         }
 

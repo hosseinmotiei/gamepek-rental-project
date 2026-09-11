@@ -79,6 +79,8 @@ class RentalApplicationController extends Controller
                 : null,
             'damageStatus' => app(RentalDamageAssessmentService::class)->statusFor($rentalApplication->id),
             'noteStatus' => app(GuaranteeNoteService::class)->statusFor($rentalApplication->id),
+            // Calculation only: no late fee is charged, settled or split.
+            'lateReturn' => $reservation?->lateReturn(),
         ]);
     }
 

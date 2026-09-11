@@ -31,7 +31,9 @@ use Illuminate\Support\Facades\DB;
  *
  * CONFIRMED since: a paid damage is credited IN FULL to GamePek's wallet
  * (WalletService::creditGamePek), separate from the owner's 35/65 settlement.
- * Staff decide whether the customer paid; there is no deadline.
+ * Staff decide whether the customer paid; there is no deadline. A note RETAINED
+ * by GamePek (a GamePek-owned device, no owner to hand it to) does not close
+ * the door on that payment -- see recordPayment().
  *
  * NOT DONE HERE: no formula, no category, no gateway integration.
  */
@@ -157,7 +159,15 @@ class RentalDamageAssessmentService
                 throw new \RuntimeException('برای این اجاره خسارتی تعیین نشده است که پرداخت شود.');
             }
 
-            if (GuaranteeNoteEvent::where('rental_application_id', $application->id)->whereNotNull('final_marker')->exists()) {
+            // CONFIRMED: only a note that has LEFT GamePek closes this door.
+            // Handed to the owner, the debt is the owner's to pursue and
+            // GamePek no longer collects it; returned to the customer, there
+            // was nothing left to pay. A note RETAINED by GamePek (a GamePek-
+            // owned device, with no owner to hand it to) is the opposite case:
+            // GamePek still holds it precisely because the damage is unpaid,
+            // and the customer may pay it later -- after which the note goes
+            // back to them.
+            if ($this->noteHasLeftGamePek($application->id)) {
                 throw new \RuntimeException('سفته این اجاره تعیین تکلیف شده است و پرداخت خسارت دیگر از طریق گیم‌پک ثبت نمی‌شود.');
             }
 
@@ -242,10 +252,31 @@ class RentalDamageAssessmentService
         return RentalDamageAssessment::where('rental_application_id', $applicationId)->latest('id')->first();
     }
 
+    /**
+     * Re-pricing stops as soon as the obligation has been acted on: paid, or
+     * the note given an outcome -- retention included. A retained note is a
+     * recorded decision about a specific amount, so that amount must stay the
+     * amount the customer can still pay.
+     */
     private function isSettled(int $applicationId): bool
     {
         return RentalDamagePayment::where('rental_application_id', $applicationId)->exists()
-            || GuaranteeNoteEvent::where('rental_application_id', $applicationId)->whereNotNull('final_marker')->exists();
+            || GuaranteeNoteEvent::where('rental_application_id', $applicationId)
+                ->whereIn('event', [
+                    GuaranteeNoteEvent::RETURNED_TO_CUSTOMER,
+                    GuaranteeNoteEvent::TRANSFERRED_TO_OWNER,
+                    GuaranteeNoteEvent::RETAINED_BY_GAMEPEK,
+                ])->exists();
+    }
+
+    /** The note is no longer in GamePek's hands: returned, or given to the owner. */
+    private function noteHasLeftGamePek(int $applicationId): bool
+    {
+        return GuaranteeNoteEvent::where('rental_application_id', $applicationId)
+            ->whereIn('event', [
+                GuaranteeNoteEvent::RETURNED_TO_CUSTOMER,
+                GuaranteeNoteEvent::TRANSFERRED_TO_OWNER,
+            ])->exists();
     }
 
     private function clean(?string $value, int $max): ?string

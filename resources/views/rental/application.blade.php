@@ -480,6 +480,40 @@
         </section>
     @endif
 
+    {{-- ─── Late return: the customer's own position ──────────────────────
+         Shown only when the rental really is late. The amount is the
+         confirmed rule -- the daily rental cost of each late day plus ۱۵٪ --
+         and it is a calculation, not an invoice: nothing has been charged. --}}
+    @if ($lateReturn)
+        <section class="bg-amber-50 rounded-2xl border border-amber-200 mb-5">
+            <header class="px-5 py-4 border-b border-amber-100">
+                <h2 class="text-sm md:text-base font-bold text-amber-800 flex items-center gap-2">
+                    <i class="fa-solid fa-clock text-amber-500"></i>
+                    بازگشت با تأخیر
+                </h2>
+            </header>
+            <div class="p-5 space-y-3 text-xs md:text-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <span class="text-amber-800">روزهای تأخیر</span>
+                    <span class="font-bold text-amber-900">{{ persian_number($lateReturn->lateDays) }} روز</span>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                    <span class="text-amber-800">هزینه تأخیر (اجاره روزانه + ۱۵٪)</span>
+                    <span class="font-bold text-amber-900">{{ persian_number(number_format($lateReturn->total)) }} تومان</span>
+                </div>
+                <p class="text-[11px] text-amber-700 leading-6">
+                    @if ($lateReturn->stillOut)
+                        دستگاه هنوز تحویل گیم‌پک نشده است؛ این مبلغ تا زمان تحویل دستگاه محاسبه شده و هر روز افزایش می‌یابد.
+                        برای هماهنگی بازگرداندن دستگاه با پشتیبانی گیم‌پک تماس بگیرید.
+                    @else
+                        این مبلغ بابت روزهایی است که دستگاه پس از تاریخ پایان قرارداد نزد شما بوده است.
+                        برای تسویه با پشتیبانی گیم‌پک هماهنگ کنید.
+                    @endif
+                </p>
+            </div>
+        </section>
+    @endif
+
     {{-- ─── Guarantee note and damage: the customer's own position ────────
          Only facts about their obligation: the assessed amount, whether it
          is paid, and where their promissory note is. No expert notes. --}}
