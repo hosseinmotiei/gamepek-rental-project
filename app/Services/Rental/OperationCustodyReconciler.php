@@ -5,6 +5,7 @@ namespace App\Services\Rental;
 use App\Enums\CustodyActor;
 use App\Enums\DeviceOwnership;
 use App\Enums\RentalOperationState;
+use App\Enums\RentalOperationType;
 use App\Models\DeviceCustodyTransfer;
 use App\Models\RentalOperation;
 use Illuminate\Support\Collection;
@@ -43,6 +44,12 @@ class OperationCustodyReconciler
     /** Operation completed on an owner device that is not in GamePek custody. */
     public const COMPLETED_BUT_CUSTODY_NOT_GAMEPEK = 'completed_but_custody_not_gamepek';
 
+    /** Delivery completed, but the device is not in the customer's hands. */
+    public const COMPLETED_BUT_CUSTODY_NOT_CUSTOMER = 'completed_but_custody_not_customer';
+
+    /** The completed task and its transfer describe different legs. */
+    public const TRANSFER_TYPE_MISMATCH = 'transfer_type_mismatch';
+
     /** The operation and its transfer name different consoles. */
     public const DEVICE_MISMATCH = 'device_mismatch';
 
@@ -80,6 +87,8 @@ class OperationCustodyReconciler
             self::COMPLETED_WITHOUT_TRANSFER => 'عملیات تکمیل شده اما تحویلی ثبت نشده است',
             self::COMPLETED_WITHOUT_DEVICE => 'عملیات تکمیل شده اما دستگاهی مشخص نیست',
             self::COMPLETED_BUT_CUSTODY_NOT_GAMEPEK => 'عملیات تکمیل شده اما دستگاه در اختیار گیم‌پک نیست',
+            self::COMPLETED_BUT_CUSTODY_NOT_CUSTOMER => 'تحویل تکمیل شده اما دستگاه در اختیار مشتری نیست',
+            self::TRANSFER_TYPE_MISMATCH => 'نوع سابقه تحویل با نوع عملیات یکسان نیست',
             self::DEVICE_MISMATCH => 'دستگاه عملیات با دستگاه سابقه تحویل یکسان نیست',
             self::TRANSFERRED_BUT_NOT_COMPLETED => 'تحویل ثبت شده اما عملیات بسته نشده است',
             self::ACTOR_PAIR_MISMATCH => 'طرفین انتقال با نوع آن هم‌خوان نیستند',
@@ -112,25 +121,45 @@ class OperationCustodyReconciler
                 return $findings;
             }
 
-            // A GamePek-owned device closes as `not_required` and never as
-            // `completed`, so reaching completion means a handover was claimed.
-            $expectsHandover = $device->ownership === DeviceOwnership::Owner;
+            // A GamePek-owned device's PICKUP closes as `not_required` and
+            // never as `completed`, so a completed pickup means a handover was
+            // claimed. Delivery and return always involve a real handover,
+            // whoever owns the console.
+            $expectsHandover = $operation->type === RentalOperationType::OwnerDevicePickup
+                ? $device->ownership === DeviceOwnership::Owner
+                : true;
+
+            $leg = $operation->type->custodyTransferType();
 
             if ($expectsHandover && ($transfer === null || ! $transfer->isPossessionMoved())) {
                 $findings[] = $this->finding(
                     self::COMPLETED_WITHOUT_TRANSFER,
                     $operation,
                     $transfer,
-                    'عملیات تکمیل شده است اما انتقال تحویل از مالک به گیم‌پک ثبت نشده است.'
+                    'عملیات تکمیل شده است اما انتقال تحویل مربوط به آن ثبت نشده است.'
                 );
             }
 
-            if ($expectsHandover && $device->currentCustody() !== CustodyActor::GamePek) {
+            // Where the device must be once this leg has completed -- but only
+            // while this is still the device's MOST RECENT movement. A
+            // collected console that has since been delivered to the customer
+            // is not a contradiction: the pickup's expectation was satisfied
+            // and then legitimately superseded. Without this, every completed
+            // pickup would be reported the moment its rental started.
+            $supersededByLaterLeg = DeviceCustodyTransfer::where('device_id', $device->id)
+                ->possessionMoved()
+                ->when($transfer !== null, fn ($q) => $q->where('id', '>', $transfer->id))
+                ->exists();
+
+            if ($expectsHandover && ! $supersededByLaterLeg && $device->currentCustody() !== $leg->destination()) {
                 $findings[] = $this->finding(
-                    self::COMPLETED_BUT_CUSTODY_NOT_GAMEPEK,
+                    $leg->destination() === CustodyActor::Customer
+                        ? self::COMPLETED_BUT_CUSTODY_NOT_CUSTOMER
+                        : self::COMPLETED_BUT_CUSTODY_NOT_GAMEPEK,
                     $operation,
                     $transfer,
-                    'دستگاه پس از تکمیل عملیات باید در اختیار گیم‌پک باشد اما نیست.'
+                    'دستگاه پس از تکمیل این عملیات باید در اختیار '
+                        .$leg->destination()->label().' باشد اما نیست.'
                 );
             }
 
@@ -140,6 +169,19 @@ class OperationCustodyReconciler
                     $operation,
                     $transfer,
                     'شناسه دستگاه در عملیات و در سابقه تحویل یکسان نیست.'
+                );
+            }
+
+            // The task and its handover must describe the same leg: a delivery
+            // task carrying an owner-pickup transfer would mean the wrong two
+            // parties were recorded as exchanging the device.
+            if ($transfer !== null && $transfer->transfer_type !== $leg) {
+                $findings[] = $this->finding(
+                    self::TRANSFER_TYPE_MISMATCH,
+                    $operation,
+                    $transfer,
+                    'نوع سابقه تحویل ('.$transfer->transfer_type->label()
+                        .') با نوع عملیات ('.$operation->type->label().') یکسان نیست.'
                 );
             }
 

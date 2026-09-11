@@ -97,6 +97,31 @@ Anything not listed in §1 is either in §4 (policy gate) or is not decided.
 
 > The *copy* for each message is not approved — see §4.
 
+### 1.8 Delivery, custody and return
+
+| # | Decision |
+|---|---|
+| C-31 | A rental becomes **Active only when GamePek physically delivers the device to the customer** — not when the start date arrives |
+| C-32 | **GamePek performs the delivery** |
+| C-33 | Delivery requires a **receipt/acceptance and a customer signature** |
+| C-34 | The device is **checked and diagnosed at the customer's door** during delivery |
+| C-35 | A customer **refusing delivery incurs a penalty** — the amount/calculation is **NOT decided** |
+| C-36 | A **failed delivery is handled case by case** with the customer — no automatic consequence |
+| C-37 | The **customer returns the device to GamePek**, coordinated **through support** |
+| C-38 | The **owner has 2 hours after GamePek receives the device** to report a defect. After that GamePek carries no responsibility for that defect; disputes go through the contracts, receipts and evidence GamePek holds |
+| C-39 | **GamePek's expert determines the damage amount** when damage exists — no formula, taxonomy or pricing is defined |
+| C-40 | After the customer returns it, the device **eventually goes back from GamePek to the owner** |
+
+> **Implemented** (see `docs/operations/OPERATIONS_AND_CUSTODY.md` §13):
+> C-31, C-32, C-34, C-37 and the C-38 window's arithmetic, plus the
+> `gamepek_to_customer` and `customer_to_gamepek` custody legs. C-33's receipt
+> handle is recorded; whether a digital signature may replace the paper one is
+> not decided. C-40's `gamepek_to_owner` leg is **not built**.
+>
+> **Deliberately not implemented**, because the rule stops short of a
+> computable one: C-35's penalty amount, C-36's consequences, C-39's damage
+> amount, and anything financial that follows C-38's window closing.
+
 ---
 
 ## 2. What this changes about previously open questions
@@ -172,7 +197,9 @@ the owner decides it, and several additionally require legal review.
   shown to admin, and nothing else happens. Refund, owner penalty, replacement
   device, reservation cancellation and owner suspension are all undecided
 - Whether a device already in GamePek custody may be released or re-picked-up
-  without a completed rental — no such transition exists
+  without a completed rental. Delivery to the customer (C-31/C-32) is now a
+  defined release path; releasing it for any OTHER reason still has no
+  transition and remains undecided
 - Device condition taxonomy — `devices.condition` is free text, no grades invented
 - **The owner availability calendar (C-16) cannot be built until these are
   decided.** C-16 confirms owners choose their dates, but not what that means:
@@ -195,15 +222,16 @@ the owner decides it, and several additionally require legal review.
 ### 4.2 Requires legal review
 
 - Exact legal effect of the **two-hour issue-report window**
-- Whether a **custody handover needs a receipt or a signature**. GamePek can
-  record taking physical possession of an owner's device, and the owner can
-  confirm that record (`custody.acknowledged`). That confirmation is expressly
-  **not** a signature, not legal acceptance, and not a statement about the
-  condition of the device. Nothing legal is claimed or generated.
-  A handover does carry a `reference_number` (`CUS-…`), but that is an
-  **internal operational handle** for naming it on the phone and in the audit
-  trail — not a receipt, and nothing legal may be built on it until this gate
-  is decided
+- Whether a **custody handover needs a receipt or a signature**. PARTLY
+  DECIDED: C-33 confirms a **delivery to the customer** requires a receipt and
+  a customer signature, taken at the door. What is still open is (a) the same
+  question for the **other** legs — the owner pickup and the eventual return
+  to the owner — and (b) whether a **digital** signature may replace the
+  physical one. The in-app confirmation (`custody.acknowledged`, available to
+  both the owner and the customer) is expressly **not** a signature, not legal
+  acceptance, and not a statement about the condition of the device. The
+  `reference_number` (`CUS-…`) names the physical receipt; nothing legal may
+  be built on the in-app confirmation until this gate is closed
 - Final contract text
 - Cheque / promissory-note legal terms
 - Electronic-signature legal validity

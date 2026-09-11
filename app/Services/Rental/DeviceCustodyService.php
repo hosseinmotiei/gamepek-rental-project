@@ -177,6 +177,105 @@ class DeviceCustodyService
     }
 
     /**
+     * GamePek records handing the device to the customer at their door.
+     *
+     * CONFIRMED RULE: this is the event that starts a rental. Completing the
+     * delivery task moves the application Approved -> Active through
+     * RentalOperationService::completeAfterCustody(), which asks the
+     * orchestrator -- nothing here writes an application state.
+     *
+     * The device must actually be in GamePek custody first: you cannot hand
+     * over what you are not holding.
+     *
+     * `$diagnosisNotes` carries the condition check performed at the door
+     * (confirmed rule). It is free text on purpose -- no damage taxonomy,
+     * severity scale or pricing is defined, and none is invented here.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function requestDeliveryToCustomer(RentalOperation $operation, User $actor): DeviceCustodyTransfer
+    {
+        return $this->openTransfer($operation, RentalOperationType::CustomerDelivery, $actor);
+    }
+
+    public function recordDeliveryToCustomer(
+        RentalOperation $operation,
+        User $actor,
+        ?string $diagnosisNotes = null,
+    ): DeviceCustodyTransfer {
+        return $this->recordPossessionMove(
+            $operation,
+            RentalOperationType::CustomerDelivery,
+            $actor,
+            $diagnosisNotes,
+        );
+    }
+
+    /**
+     * GamePek records taking the device back from the customer.
+     *
+     * CONFIRMED RULE: the return is coordinated through support, so it is
+     * recorded by staff. Completing the task moves Active -> Returned through
+     * the orchestrator.
+     *
+     * The moment recorded here is also the start of the owner's two-hour
+     * defect-report window -- see
+     * DeviceCustodyTransfer::ownerDefectReportDeadline().
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function requestReturnFromCustomer(RentalOperation $operation, User $actor): DeviceCustodyTransfer
+    {
+        return $this->openTransfer($operation, RentalOperationType::CustomerReturn, $actor);
+    }
+
+    public function recordReturnToGamePek(
+        RentalOperation $operation,
+        User $actor,
+        ?string $diagnosisNotes = null,
+    ): DeviceCustodyTransfer {
+        return $this->recordPossessionMove(
+            $operation,
+            RentalOperationType::CustomerReturn,
+            $actor,
+            $diagnosisNotes,
+        );
+    }
+
+    /**
+     * The customer confirms GamePek's record of a handover they were party to.
+     *
+     * Exactly the same meaning as the owner's acknowledgement: a confirmation
+     * that the RECORD matches what happened. It is NOT a signature, NOT legal
+     * acceptance, and says nothing about the condition of the device. The
+     * confirmed requirement that a delivery carries a receipt and a customer
+     * signature is satisfied operationally at the door and referenced by
+     * `reference_number`; whether a digital signature may replace the physical
+     * one is not decided and nothing here claims it does.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function acknowledgeByCustomer(DeviceCustodyTransfer $transfer, User $actor): DeviceCustodyTransfer
+    {
+        $transfer->loadMissing('operation.application');
+        $application = $transfer->operation?->application;
+
+        // Ownership of the rental is the authority here, never a posted id.
+        if ($application === null || $application->user_id !== $actor->id) {
+            throw new \RuntimeException('این سابقه تحویل به درخواست اجاره شما مربوط نیست.');
+        }
+
+        if (! in_array($transfer->transfer_type, [
+            CustodyTransferType::GamePekToCustomer,
+            CustodyTransferType::CustomerToGamePek,
+        ], true)) {
+            throw new \RuntimeException('مشتری طرف این انتقال تحویل نیست.');
+        }
+
+        return $this->acknowledge($transfer, $actor);
+    }
+
+    /**
      * The owner confirms GamePek's record of the handover.
      *
      * Changes nothing about custody -- possession already moved -- and carries
@@ -186,6 +285,22 @@ class DeviceCustodyService
      * @throws \RuntimeException with a Persian message
      */
     public function acknowledgeByOwner(DeviceCustodyTransfer $transfer, User $actor): DeviceCustodyTransfer
+    {
+        // An owner may only confirm a leg they were actually a party to.
+        // Without this, an owner reaching a delivery or return record would be
+        // confirming a handover between GamePek and the customer.
+        if ($transfer->transfer_type !== CustodyTransferType::OwnerToGamePek) {
+            throw new \RuntimeException('مالک طرف این انتقال تحویل نیست.');
+        }
+
+        return $this->acknowledge($transfer, $actor);
+    }
+
+    /**
+     * The shared acknowledgement write. Both counterparties reach it only
+     * after their own authorization check above.
+     */
+    private function acknowledge(DeviceCustodyTransfer $transfer, User $actor): DeviceCustodyTransfer
     {
         return DB::transaction(function () use ($transfer, $actor) {
             $locked = DeviceCustodyTransfer::where('id', $transfer->id)->lockForUpdate()->firstOrFail();
@@ -227,6 +342,187 @@ class DeviceCustodyService
 
             return $transfer;
         });
+    }
+
+    /**
+     * Open the paperwork for a delivery or a return. NOT possession.
+     *
+     * Idempotent: an existing transfer for the task is returned untouched, and
+     * unique(rental_operation_id) catches the concurrent case that check
+     * cannot -- the same shape requestFromOwner() uses for the owner leg.
+     */
+    private function openTransfer(
+        RentalOperation $operation,
+        RentalOperationType $expectedType,
+        User $actor,
+    ): DeviceCustodyTransfer {
+        return DB::transaction(function () use ($operation, $expectedType, $actor) {
+            $locked = RentalOperation::where('id', $operation->id)->lockForUpdate()->firstOrFail();
+
+            $existing = $locked->custodyTransfer()->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
+            $device = $this->assertCustodyPreconditions($locked, $expectedType);
+            $type = $expectedType->custodyTransferType();
+
+            try {
+                // Assigned attribute-by-attribute, never mass-assigned: the
+                // model guards everything, so actors and state cannot arrive
+                // from request data even by accident.
+                $transfer = new DeviceCustodyTransfer;
+                $transfer->reference_number = DeviceCustodyTransfer::generateReference();
+                $transfer->device_id = $device->id;
+                $transfer->rental_operation_id = $locked->id;
+                $transfer->rental_reservation_id = $locked->rental_reservation_id;
+                $transfer->transfer_type = $type;
+
+                // Derived from the type, never chosen independently.
+                $transfer->from_actor_type = $type->source();
+                $transfer->to_actor_type = $type->destination();
+
+                // Only an owner side names an owner. Neither side of a
+                // delivery or a return is one, so both stay null and the
+                // owner-reference CHECK constraint is satisfied.
+                $transfer->from_owner_id = $type->source() === CustodyActor::Owner ? $device->owner_id : null;
+                $transfer->to_owner_id = $type->destination() === CustodyActor::Owner ? $device->owner_id : null;
+
+                $transfer->state = CustodyTransferState::Requested;
+                $transfer->initiated_at = now();
+                $transfer->initiated_by_user_id = $actor->id;
+
+                $this->assertActorsMatchType($transfer);
+
+                $transfer->save();
+            } catch (QueryException $e) {
+                if ($this->isDuplicateTransfer($e)) {
+                    return $locked->custodyTransfer()->firstOrFail();
+                }
+
+                throw $e;
+            }
+
+            $this->audit('custody.requested', $transfer, $device, $actor);
+
+            return $transfer;
+        });
+    }
+
+    /**
+     * Record that possession actually moved, and close the task behind it.
+     *
+     * Ownership is not touched and that is asserted afterwards rather than
+     * trusted, exactly as the owner leg does.
+     *
+     * Concurrency: the operation row is locked first, so two operators
+     * recording the same handover serialise here. The loser finds the transfer
+     * already moved and gets a Persian conflict message, not a second record --
+     * and unique(rental_operation_id) backs that up in the database.
+     */
+    private function recordPossessionMove(
+        RentalOperation $operation,
+        RentalOperationType $expectedType,
+        User $actor,
+        ?string $notes,
+    ): DeviceCustodyTransfer {
+        return DB::transaction(function () use ($operation, $expectedType, $actor, $notes) {
+            $locked = RentalOperation::where('id', $operation->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->state !== RentalOperationState::InProgress) {
+                throw new \RuntimeException('این عملیات در وضعیت لازم برای ثبت تحویل نیست.');
+            }
+
+            $device = $this->assertCustodyPreconditions($locked, $expectedType);
+
+            $transfer = $locked->custodyTransfer()->lockForUpdate()->first()
+                ?? throw new \RuntimeException('برای این عملیات درخواست تحویلی ثبت نشده است.');
+
+            if ($transfer->isPossessionMoved()) {
+                throw new \RuntimeException('تحویل این دستگاه قبلاً ثبت شده است.');
+            }
+
+            if (! $transfer->state->canTransitionTo(CustodyTransferState::Transferred)) {
+                throw new \RuntimeException('وضعیت تحویل این دستگاه اجازه این تغییر را نمی‌دهد.');
+            }
+
+            if ($transfer->device_id !== $locked->device_id) {
+                throw new \RuntimeException('دستگاه ثبت‌شده در سابقه تحویل با دستگاه این عملیات یکسان نیست.');
+            }
+
+            if ($transfer->transfer_type !== $expectedType->custodyTransferType()) {
+                throw new \RuntimeException('نوع سابقه تحویل با نوع این عملیات یکسان نیست.');
+            }
+
+            $this->assertActorsMatchType($transfer);
+
+            $ownershipBefore = [$device->owner_id, $device->ownership->value];
+
+            $transfer->state = CustodyTransferState::Transferred;
+            $transfer->transferred_at = now();
+            $transfer->transferred_by_user_id = $actor->id;
+
+            // The condition check performed at the door (confirmed rule).
+            // Free text: no damage taxonomy or severity scale is defined.
+            if ($notes !== null && trim($notes) !== '') {
+                $transfer->notes = mb_substr(trim($notes), 0, 2000);
+            }
+
+            $transfer->save();
+
+            $this->audit('custody.transferred', $transfer, $device, $actor);
+
+            // Closing the task is what asks the orchestrator to move the
+            // rental's own lifecycle -- see
+            // RentalOperationService::completeAfterCustody().
+            $this->operations->completeAfterCustody($locked, $actor);
+
+            $this->assertOwnershipUnchanged($device, $ownershipBefore);
+
+            return $transfer;
+        });
+    }
+
+    /**
+     * Everything that must be true before a delivery or return may be
+     * recorded, checked here rather than at the call sites so no future
+     * controller can skip one.
+     *
+     * The last check is the one that matters most: the side giving the device
+     * up must actually be holding it. You cannot deliver a console you never
+     * collected, and you cannot take one back from a customer who never
+     * received it.
+     */
+    private function assertCustodyPreconditions(
+        RentalOperation $operation,
+        RentalOperationType $expectedType,
+    ): Device {
+        if ($operation->type !== $expectedType) {
+            throw new \RuntimeException('نوع این عملیات با ثبت تحویل درخواستی یکسان نیست.');
+        }
+
+        $device = $operation->device()->first();
+
+        if ($device === null) {
+            throw new \RuntimeException('تا زمانی که دستگاه مشخص نشده باشد، تحویل قابل ثبت نیست.');
+        }
+
+        $reservation = $operation->reservation()->first();
+
+        if ($reservation === null || $reservation->device_id !== $device->id) {
+            throw new \RuntimeException('دستگاه این عملیات با رزرو مربوطه هم‌خوان نیست.');
+        }
+
+        if ($device->product_id !== $reservation->product_id) {
+            throw new \RuntimeException('این دستگاه از مدل رزروشده نیست.');
+        }
+
+        if ($device->currentCustody() !== $expectedType->custodyTransferType()->source()) {
+            throw new \RuntimeException('این دستگاه در اختیار طرفی نیست که باید آن را تحویل دهد.');
+        }
+
+        return $device;
     }
 
     /**

@@ -73,14 +73,21 @@ class RentalPostApprovalLifecycleTest extends TestCase
         $this->admin->syncRoles(['super_admin']);
     }
 
-    // -- 1. the shipped configuration defines no trigger -------------------
+    // -- 1. the shipped configuration names only DECIDED triggers ----------
 
-    public function test_no_post_approval_trigger_is_configured(): void
+    public function test_only_the_confirmed_post_approval_triggers_are_configured(): void
     {
-        // If one of these ever becomes non-null, it must be an owner decision
-        // recorded in the documentation -- not a default someone guessed.
-        $this->assertNull(config('rental.lifecycle.activation_trigger'));
-        $this->assertNull(config('rental.lifecycle.return_trigger'));
+        // Activation and return are confirmed business rules: a rental starts
+        // when GamePek physically delivers the device, and ends when the
+        // customer returns it. Both are produced by completing the matching
+        // operation, never by a date or a posted field.
+        $this->assertSame('customer_delivery_completed', config('rental.lifecycle.activation_trigger'));
+        $this->assertSame('customer_return_completed', config('rental.lifecycle.return_trigger'));
+
+        // Closure is still undecided -- it waits on deposit release (B4),
+        // damage assessment (amount set by a GamePek expert, no formula) and
+        // media retention (B11). If this ever becomes non-null it must be an
+        // owner decision recorded in the documentation, not a guessed default.
         $this->assertNull(config('rental.lifecycle.closure_trigger'));
     }
 
@@ -150,19 +157,52 @@ class RentalPostApprovalLifecycleTest extends TestCase
         $this->assertSame(RentalApplicationState::Approved, $application->refresh()->state);
     }
 
-    // -- 3. Active / Returned / Closed are policy-blocked -------------------
+    // -- 3. what is still refused after approval ---------------------------
 
-    public function test_activation_fails_closed_while_its_trigger_is_undefined(): void
+    /**
+     * Activation is no longer policy-blocked -- it is EVENT-blocked. The
+     * orchestrator will move Approved -> Active when asked, and the only
+     * caller that asks is RentalOperationService completing a
+     * `customer_delivery` task. Nothing derives it, and merely being approved
+     * does not produce it.
+     *
+     * The full delivery path is covered by RentalDeliveryAndReturnTest.
+     */
+    public function test_approval_alone_never_produces_active(): void
     {
-        $this->assertPostApprovalRefused(RentalApplicationState::Active);
+        $application = $this->approvedApplication();
+        $orchestrator = app(RentalChainOrchestrator::class);
+
+        for ($i = 0; $i < 5; $i++) {
+            $orchestrator->advance($application->refresh());
+        }
+
+        $this->assertSame(RentalApplicationState::Approved, $application->refresh()->state);
+        $this->assertSame(
+            0,
+            RentalApplicationTransition::where('rental_application_id', $application->id)
+                ->where('to_state', RentalApplicationState::Active->value)->count(),
+        );
     }
 
-    public function test_marking_returned_fails_closed_while_its_trigger_is_undefined(): void
+    public function test_marking_returned_still_requires_passing_through_active(): void
     {
-        $this->assertPostApprovalRefused(RentalApplicationState::Returned);
+        $application = $this->approvedApplication();
+
+        // Approved -> Returned skips a rung. The trigger exists now, so this
+        // is refused by the adjacency guard rather than by policy.
+        try {
+            app(RentalChainOrchestrator::class)
+                ->transitionPostApproval($application, RentalApplicationState::Returned, $this->admin);
+            $this->fail('Approved -> Returned must not skip Active.');
+        } catch (\RuntimeException) {
+            // expected
+        }
+
+        $this->assertSame(RentalApplicationState::Approved, $application->refresh()->state);
     }
 
-    public function test_closure_fails_closed_while_its_trigger_is_undefined(): void
+    public function test_closure_fails_closed_while_its_trigger_is_undecided(): void
     {
         $this->assertPostApprovalRefused(RentalApplicationState::Closed);
     }
@@ -194,8 +234,20 @@ class RentalPostApprovalLifecycleTest extends TestCase
         }
     }
 
+    /**
+     * No route may move the application's state. The two routes that exist
+     * for the physical tasks are allowed through by name, but only after
+     * being pinned to the operations controller: they OPEN a task, and the
+     * orchestrator moves the rental only when that task completes with a
+     * recorded handover behind it. Nothing accepts a state as input.
+     */
     public function test_no_route_exposes_a_post_approval_transition(): void
     {
+        $operationalRoutes = [
+            'admin.rental-applications.delivery.open' => 'Admin\OperationController@openDelivery',
+            'admin.rental-applications.return.open' => 'Admin\OperationController@openReturn',
+        ];
+
         $targets = ['active', 'returned', 'closed', 'activate', 'return', 'close'];
 
         foreach (Route::getRoutes() as $route) {
@@ -205,11 +257,21 @@ class RentalPostApprovalLifecycleTest extends TestCase
                 continue;
             }
 
+            if (array_key_exists($name, $operationalRoutes)) {
+                $this->assertStringContainsString(
+                    $operationalRoutes[$name],
+                    (string) $route->getActionName(),
+                    'An operation-opening route is handled by something other than the operations controller.',
+                );
+
+                continue;
+            }
+
             foreach ($targets as $target) {
                 $this->assertStringNotContainsString(
                     $target,
                     $name,
-                    'A route exposes a post-approval transition whose policy is undefined.',
+                    'A route exposes a post-approval transition directly.',
                 );
             }
         }
@@ -311,10 +373,8 @@ class RentalPostApprovalLifecycleTest extends TestCase
      * shipped value is null, as test_no_post_approval_trigger_is_configured
      * asserts.
      */
-    public function test_with_a_trigger_defined_the_mechanism_is_idempotent_and_ordered(): void
+    public function test_the_mechanism_is_idempotent_and_ordered(): void
     {
-        config()->set('rental.lifecycle.activation_trigger', 'test_fixture');
-
         $application = $this->approvedApplication();
         $orchestrator = app(RentalChainOrchestrator::class);
 
@@ -329,15 +389,19 @@ class RentalPostApprovalLifecycleTest extends TestCase
                 ->where('to_state', RentalApplicationState::Active->value)->count(),
         );
 
-        // Returned still has no trigger, so the chain stops here anyway.
+        // Returned is a confirmed rung and follows Active, so it moves.
+        $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Returned, $this->admin);
+        $this->assertSame(RentalApplicationState::Returned, $application->refresh()->state);
+
+        // Closure still has no trigger, so the chain stops here.
         try {
-            $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Returned, $this->admin);
-            $this->fail('Returned must stay policy-blocked.');
+            $orchestrator->transitionPostApproval($application->refresh(), RentalApplicationState::Closed, $this->admin);
+            $this->fail('Closed must stay policy-blocked.');
         } catch (\RuntimeException) {
             // expected
         }
 
-        $this->assertSame(RentalApplicationState::Active, $application->refresh()->state);
+        $this->assertSame(RentalApplicationState::Returned, $application->refresh()->state);
     }
 
     public function test_even_with_a_trigger_a_rung_cannot_be_skipped(): void
@@ -358,9 +422,10 @@ class RentalPostApprovalLifecycleTest extends TestCase
     {
         $application = $this->approvedApplication();
 
+        // Closure is the rung whose trigger is still undecided.
         try {
             app(RentalChainOrchestrator::class)
-                ->transitionPostApproval($application, RentalApplicationState::Active, $this->admin);
+                ->transitionPostApproval($application, RentalApplicationState::Closed, $this->admin);
         } catch (\RuntimeException) {
             // expected
         }
@@ -374,7 +439,7 @@ class RentalPostApprovalLifecycleTest extends TestCase
         $this->assertSame('denied', $event->result);
         $this->assertNotNull($event->correlation_id);
         $this->assertSame('approved', $event->context['from']);
-        $this->assertSame('active', $event->context['to']);
+        $this->assertSame('closed', $event->context['to']);
         $this->assertStringContainsString('B14', $event->context['note']);
 
         $audit = json_encode(AuditEvent::pluck('context'), JSON_UNESCAPED_UNICODE);
@@ -387,10 +452,13 @@ class RentalPostApprovalLifecycleTest extends TestCase
 
     /**
      * The whole chain in one place, with each rung labelled by WHY it moves.
-     * The last three are not "not yet written" -- they are refused, because the
-     * rule that would permit them does not exist.
+     *
+     * Approved no longer ends it: a delivery moves it on. But nothing moves it
+     * on by itself, and Closed is still refused because the rule that would
+     * permit it does not exist. The rungs beyond Approved are reached only by
+     * completing the matching operation -- see RentalDeliveryAndReturnTest.
      */
-    public function test_the_lifecycle_ends_at_approved_and_says_why(): void
+    public function test_the_lifecycle_stops_at_approved_until_an_operation_moves_it(): void
     {
         $application = $this->signedApplication($this->user, self::CODE);
 
@@ -401,25 +469,26 @@ class RentalPostApprovalLifecycleTest extends TestCase
         app(RentalChainOrchestrator::class)->approve($application, $this->admin, null);
         $this->assertSame(RentalApplicationState::Approved, $application->refresh()->state);
 
-        // Policy-blocked: no trigger is defined for any of the three.
-        foreach ([
-            RentalApplicationState::Active,
-            RentalApplicationState::Returned,
-            RentalApplicationState::Closed,
-        ] as $target) {
-            try {
-                app(RentalChainOrchestrator::class)
-                    ->transitionPostApproval($application->refresh(), $target, $this->admin);
-                $this->fail($target->value.' must remain policy-blocked.');
-            } catch (\RuntimeException) {
-                // expected
-            }
+        // No delivery exists, so nothing derives Active however often the
+        // chain is re-evaluated.
+        for ($i = 0; $i < 3; $i++) {
+            app(RentalChainOrchestrator::class)->advance($application->refresh());
+        }
+        $this->assertSame(RentalApplicationState::Approved, $application->refresh()->state);
+
+        // Closure remains policy-blocked: its trigger is undecided.
+        try {
+            app(RentalChainOrchestrator::class)
+                ->transitionPostApproval($application->refresh(), RentalApplicationState::Closed, $this->admin);
+            $this->fail('Closed must remain policy-blocked.');
+        } catch (\RuntimeException) {
+            // expected
         }
 
         $this->assertSame(RentalApplicationState::Approved, $application->refresh()->state);
-        $this->assertSame(3, AuditEvent::forAction('rental_application.policy_undefined')->count());
+        $this->assertSame(1, AuditEvent::forAction('rental_application.policy_undefined')->count());
 
-        // The transition log stops where the policy does.
+        // The transition log stops where the operations do.
         $this->assertSame(
             'approved',
             RentalApplicationTransition::where('rental_application_id', $application->id)

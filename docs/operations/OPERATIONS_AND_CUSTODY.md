@@ -351,7 +351,75 @@ delivery process exists in the codebase at all. This is judged unsafe/
 misleading rather than merely incomplete, so nothing was added to the
 customer-facing Rental Application page.
 
-## 12. Delivery / customer custody feasibility analysis -- not implemented, and why
+## 13. Delivery, activation and customer return -- IMPLEMENTED
+
+The business has since confirmed the rules §12 was waiting on, and the
+delivery and customer-return legs are now built. §12 is kept below as the
+record of why they were not built earlier; it is superseded by this section.
+
+### 13.1 The confirmed rules, implemented
+
+| Rule | Where it lives |
+|---|---|
+| A rental becomes **Active only when GamePek physically delivers the device to the customer** -- never because the start date arrived | completing `customer_delivery` calls `RentalChainOrchestrator::transitionPostApproval()`; `config('rental.lifecycle.activation_trigger')` names it |
+| Delivery is performed by **GamePek** | the delivery task is staff-driven; there is no courier concept and no provider field |
+| Delivery carries a **receipt/acceptance and a customer signature** | the handover's `reference_number` (`CUS-…`) is the receipt handle recorded at the door; the customer can separately confirm the record in their own panel |
+| The device is **checked and diagnosed at the customer's door** | the condition record is captured as free text on the transfer's `notes` when the delivery is recorded |
+| The customer **returns the device to GamePek** | `customer_return`, opened and recorded by staff |
+| The return is **coordinated through support** | there is deliberately NO customer-facing control to start a return -- only to confirm a handover record |
+| Completing the return moves the rental to **Returned** | `config('rental.lifecycle.return_trigger')` |
+| The owner has **2 hours after GamePek receives the device** to report a defect | `DeviceCustodyTransfer::ownerDefectReportDeadline()` / `isWithinOwnerDefectReportWindow()` -- arithmetic only |
+
+### 13.2 New custody legs
+
+```
+owner_to_gamepek     owner    -> gamepek   (unchanged)
+gamepek_to_customer  gamepek  -> customer  (new: starts the rental)
+customer_to_gamepek  customer -> gamepek   (new: ends it)
+```
+
+Each leg still moves possession only at `transferred`; `acknowledged` remains
+a confirmation of the record by the counterparty and carries no legal effect.
+Both counterparties are now served: `acknowledgeByOwner()` accepts only the
+owner leg, `acknowledgeByCustomer()` only the customer legs and only for the
+customer who owns that rental.
+
+`device_custody_actor_pair_ck` was tightened in the same change: it now pins
+each of the three types to its own actor pair AND restricts `transfer_type`
+to those three. The previous form was vacuously true for any type other than
+`owner_to_gamepek`, so the moment a second leg existed the database would
+have stopped checking actor pairs for it.
+
+A leg also refuses to open unless the side giving the device up is actually
+holding it (`Device::currentCustody()`): you cannot deliver a console you
+never collected, or take one back from a customer who never received it.
+
+### 13.3 Still NOT decided -- do not read any of this as settled
+
+- **The penalty when a customer refuses delivery.** Confirmed that one
+  exists; the amount and its calculation are not defined, so nothing is
+  charged, computed or recorded beyond the failure itself.
+- **What follows a failed delivery.** Handled case by case with the customer;
+  no automatic consequence is implemented.
+- **Damage.** A GamePek expert determines the amount when damage exists.
+  There is no damage taxonomy, severity scale, repair pricing or automatic
+  assessment -- the delivery/return condition record is free text.
+- **What happens financially after the owner's two-hour window closes.** The
+  window is calculated and nothing acts on it: no notification, no penalty,
+  no deposit or refund movement.
+- **Deposit, refund, settlement.** Untouched.
+- **Closure (`Returned -> Closed`).** Its trigger is still null and the
+  transition still refuses with `rental_application.policy_undefined`.
+- **Whether a digital signature may replace the signed paper receipt.** The
+  requirement is confirmed; the mechanism is not, and nothing in the system
+  claims the in-app confirmation is a signature.
+- **`gamepek_to_owner`** -- returning the console to its owner after a rental
+  ends. Confirmed to exist as a business step, not yet built, and therefore
+  still absent from `CustodyTransferType` rather than declared-and-disabled.
+- **Inspection as its own domain.** Only the free-text condition record
+  exists; there is no inspection entity, grading or approval step.
+
+## 12. Delivery / customer custody feasibility analysis -- superseded by §13
 
 A task requested adding the `gamepek -> customer`, `customer -> gamepek` and
 `gamepek -> owner` custody legs, a delivery `RentalOperation` type, and a

@@ -3,6 +3,7 @@
 namespace App\Services\Rental;
 
 use App\Enums\DeviceOwnership;
+use App\Enums\RentalApplicationState;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use App\Models\Device;
@@ -44,6 +45,14 @@ use Illuminate\Support\Facades\DB;
 class RentalOperationService
 {
     /**
+     * The orchestrator is injected, not bypassed: when a delivery or a return
+     * completes, the resulting application-state move is asked of
+     * RentalChainOrchestrator, which remains the ONLY writer of
+     * `rental_applications.state`. This service never assigns that column.
+     */
+    public function __construct(private RentalChainOrchestrator $orchestrator) {}
+
+    /**
      * Create the pickup task for a reservation whose payment has cleared.
      *
      * Called from inside the reservation-creation transaction, so an operation
@@ -60,8 +69,75 @@ class RentalOperationService
      */
     public function openPickupForReservation(RentalReservation $reservation, ?User $actor = null): RentalOperation
     {
+        return $this->openOperation($reservation, RentalOperationType::OwnerDevicePickup, $actor);
+    }
+
+    /**
+     * Open the task for handing the device to the customer.
+     *
+     * CONFIRMED RULE: completing this task is the only thing that starts a
+     * rental (Approved -> Active). It is therefore refused unless the
+     * application has actually been approved -- an admin should learn that
+     * before driving to the customer, not when the completion is rejected.
+     *
+     * A device must already be allocated to the reservation: there is nothing
+     * to deliver otherwise, and this service still never chooses one.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function openDeliveryForReservation(RentalReservation $reservation, User $actor): RentalOperation
+    {
+        $application = $reservation->application()->firstOrFail();
+
+        if ($application->state !== RentalApplicationState::Approved) {
+            throw new \RuntimeException('تا زمانی که درخواست تأیید نهایی نشده باشد، تحویل به مشتری ثبت نمی‌شود.');
+        }
+
+        if ($reservation->device_id === null) {
+            throw new \RuntimeException('تا زمانی که دستگاه مشخص نشده باشد، تحویل به مشتری برنامه‌ریزی نمی‌شود.');
+        }
+
+        return $this->openOperation($reservation, RentalOperationType::CustomerDelivery, $actor);
+    }
+
+    /**
+     * Open the task for taking the device back from the customer.
+     *
+     * CONFIRMED RULE: the return is arranged through support, so this is
+     * opened by staff rather than by the customer. Completing it is what
+     * moves Active -> Returned.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function openReturnForReservation(RentalReservation $reservation, User $actor): RentalOperation
+    {
+        $application = $reservation->application()->firstOrFail();
+
+        if ($application->state !== RentalApplicationState::Active) {
+            throw new \RuntimeException('بازگشت دستگاه فقط برای اجاره فعال ثبت می‌شود.');
+        }
+
+        if ($reservation->device_id === null) {
+            throw new \RuntimeException('برای این رزرو دستگاهی ثبت نشده است.');
+        }
+
+        return $this->openOperation($reservation, RentalOperationType::CustomerReturn, $actor);
+    }
+
+    /**
+     * The one creator of operational tasks, for every type.
+     *
+     * Idempotent twice over: an existing task of this type is returned
+     * untouched, and unique(rental_reservation_id, type) catches the
+     * concurrent case that check cannot.
+     */
+    private function openOperation(
+        RentalReservation $reservation,
+        RentalOperationType $type,
+        ?User $actor,
+    ): RentalOperation {
         $existing = RentalOperation::where('rental_reservation_id', $reservation->id)
-            ->where('type', RentalOperationType::OwnerDevicePickup->value)
+            ->where('type', $type->value)
             ->first();
 
         if ($existing) {
@@ -73,19 +149,21 @@ class RentalOperationService
             $operation->operation_number = RentalOperation::generateNumber();
             $operation->rental_reservation_id = $reservation->id;
             $operation->rental_application_id = $reservation->rental_application_id;
-            $operation->type = RentalOperationType::OwnerDevicePickup;
+            $operation->type = $type;
             $operation->state = RentalOperationState::Pending;
             $operation->created_by_user_id = $actor?->id;
 
-            // A reservation carries no device today; if a later phase ever
-            // allocates one before payment, the task starts already attached
-            // rather than asking for an allocation that already happened.
+            // A reservation carries no device at payment time; if a later phase
+            // ever allocates one before payment, the task starts already
+            // attached rather than asking for an allocation that already
+            // happened. Delivery and return are always opened with one.
             $operation->device_id = $reservation->device_id;
+            $operation->owner_id = $reservation->device?->owner_id;
             $operation->save();
         } catch (QueryException $e) {
             if ($this->isDuplicateOperation($e)) {
                 return RentalOperation::where('rental_reservation_id', $reservation->id)
-                    ->where('type', RentalOperationType::OwnerDevicePickup->value)
+                    ->where('type', $type->value)
                     ->firstOrFail();
             }
 
@@ -109,12 +187,20 @@ class RentalOperationService
         // Resolve the birth state honestly: with no device there is nothing to
         // plan, so the task says exactly that.
         if (! $operation->hasDevice()) {
-            $operation = $this->transition(
+            return $this->transition(
                 $operation,
                 RentalOperationState::AwaitingDeviceAllocation,
                 $actor,
                 'awaiting_device_allocation',
             );
+        }
+
+        // Delivery and return are born with the device already known, so the
+        // rung the pickup reaches through attachDevice() is reached here
+        // instead. The pickup's own path is untouched: it is created before any
+        // device exists and still waits for a human to name one.
+        if ($type !== RentalOperationType::OwnerDevicePickup) {
+            return $this->transition($operation, RentalOperationState::Scheduled, $actor, 'scheduled');
         }
 
         return $operation;
@@ -383,7 +469,45 @@ class RentalOperationService
             actor: $actor,
         );
 
+        $this->advanceLifecycleAfter($locked, $actor);
+
         return $locked;
+    }
+
+    /**
+     * The completed task's effect on the rental's own lifecycle.
+     *
+     * CONFIRMED RULES, and the only two application-state effects an
+     * operational task has:
+     *
+     *   customer_delivery completed -> Approved becomes Active
+     *   customer_return   completed -> Active becomes Returned
+     *
+     * An owner pickup completing changes no application state, exactly as
+     * before. The move itself is performed by RentalChainOrchestrator (sole
+     * writer of `state`, adjacency-checked, audited); this method only names
+     * which rung the completed task corresponds to. It runs INSIDE the
+     * caller's transaction, so an application that is not in the state the
+     * move requires rolls the whole completion back rather than leaving a
+     * completed handover attached to a rental that never started.
+     */
+    private function advanceLifecycleAfter(RentalOperation $operation, User $actor): void
+    {
+        $target = match ($operation->type) {
+            RentalOperationType::CustomerDelivery => RentalApplicationState::Active,
+            RentalOperationType::CustomerReturn => RentalApplicationState::Returned,
+            default => null,
+        };
+
+        if ($target === null) {
+            return;
+        }
+
+        $this->orchestrator->transitionPostApproval(
+            $operation->application()->firstOrFail(),
+            $target,
+            $actor,
+        );
     }
 
     /**

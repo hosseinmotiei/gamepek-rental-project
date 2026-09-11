@@ -338,11 +338,9 @@
         </ol>
     </section>
 
-    {{-- Shown once every step above is done and nothing is "current" anymore
-         -- today that only happens at Approved, since Active/Returned/Closed
-         are not yet reachable (B14). Reuses $application->state and
-         approved_at, which are already set by RentalChainOrchestrator::approve();
-         no new fact or workflow is introduced here. --}}
+    {{-- Shown once every step above is done and nothing is "current" anymore.
+         Reuses $application->state and approved_at, which are already set by
+         RentalChainOrchestrator::approve(); no new fact is introduced here. --}}
     @if ($application->state === RentalApplicationState::Approved)
         <div class="mb-5 flex items-start gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-5 py-4">
             <i class="fa-solid fa-circle-check text-lg mt-0.5 shrink-0"></i>
@@ -356,6 +354,114 @@
                 @endif
             </div>
         </div>
+    @endif
+
+    {{-- ─── Delivery and return ──────────────────────────────────────────
+         Read-only, and only ever facts the backend actually records: the
+         task's own state, the handover's own state, and the timestamps
+         attached to them. Nothing here claims the rental is active (the
+         badge above reports the real state), nothing claims a legal
+         acceptance, and the device serial, its owner and internal operator
+         notes are deliberately not shown. --}}
+    @php
+        $delivery = $reservation?->operations
+            ->firstWhere('type', App\Enums\RentalOperationType::CustomerDelivery);
+        $returnTask = $reservation?->operations
+            ->firstWhere('type', App\Enums\RentalOperationType::CustomerReturn);
+
+        $handoverLabel = function ($operation) {
+            $transfer = $operation?->custodyTransfer;
+
+            if ($transfer?->state === App\Enums\CustodyTransferState::Acknowledged) {
+                return 'تأییدشده توسط شما';
+            }
+
+            if ($transfer?->isPossessionMoved()) {
+                return 'ثبت شد';
+            }
+
+            return $transfer ? 'در جریان' : 'هنوز ثبت نشده';
+        };
+
+        // Only a handover that has actually happened and has not been
+        // confirmed yet can be confirmed.
+        $awaitingConfirmation = collect([$delivery, $returnTask])
+            ->filter()
+            ->first(fn ($operation) => $operation->custodyTransfer
+                && $operation->custodyTransfer->isPossessionMoved()
+                && $operation->custodyTransfer->state !== App\Enums\CustodyTransferState::Acknowledged);
+    @endphp
+
+    @if ($delivery || $returnTask)
+        <section class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-5">
+            <header class="px-5 py-4 border-b border-gray-100">
+                <h2 class="text-sm md:text-base font-bold text-gray-800 flex items-center gap-2">
+                    <i class="fa-solid fa-truck text-gray-400"></i>
+                    تحویل و بازگشت دستگاه
+                </h2>
+            </header>
+
+            <div class="p-5 space-y-3 text-xs md:text-sm">
+                @if ($delivery)
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-gray-500">وضعیت تحویل به شما</span>
+                        <span class="font-bold text-gray-800">{{ $delivery->state->label() }}</span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-gray-500">سابقه تحویل</span>
+                        <span class="font-bold text-gray-800">{{ $handoverLabel($delivery) }}</span>
+                    </div>
+                    @if ($delivery->custodyTransfer?->transferred_at)
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="text-gray-500">تاریخ تحویل</span>
+                            <span class="font-bold text-gray-800" dir="ltr">
+                                {{ \App\Support\Rental\Jalali::formatLong($delivery->custodyTransfer->transferred_at->format('Y-m-d')) }}
+                            </span>
+                        </div>
+                    @endif
+                    @if ($delivery->custodyTransfer?->reference_number)
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="text-gray-500">شناسه رسید تحویل</span>
+                            <span class="font-mono text-[11px] text-gray-500" dir="ltr">{{ $delivery->custodyTransfer->reference_number }}</span>
+                        </div>
+                    @endif
+                @endif
+
+                @if ($returnTask)
+                    <div class="flex items-center justify-between gap-3 border-t border-gray-50 pt-3">
+                        <span class="text-gray-500">وضعیت بازگشت دستگاه</span>
+                        <span class="font-bold text-gray-800">{{ $returnTask->state->label() }}</span>
+                    </div>
+                    @if ($returnTask->custodyTransfer?->transferred_at)
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="text-gray-500">تاریخ بازگشت</span>
+                            <span class="font-bold text-gray-800" dir="ltr">
+                                {{ \App\Support\Rental\Jalali::formatLong($returnTask->custodyTransfer->transferred_at->format('Y-m-d')) }}
+                            </span>
+                        </div>
+                    @endif
+                @endif
+
+                @if ($awaitingConfirmation)
+                    <form method="POST" action="{{ route('rental.applications.handover.acknowledge', $application) }}"
+                          data-loading-label="در حال ثبت…" class="pt-2">
+                        @csrf
+                        <input type="hidden" name="operation" value="{{ $awaitingConfirmation->id }}">
+                        <p class="text-xs text-gray-500 mb-3">
+                            اگر سابقه بالا با آنچه انجام شده مطابقت دارد، آن را تأیید کنید.
+                        </p>
+                        <button type="submit"
+                                class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-brandBlue text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:bg-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-circle-check"></i> تأیید این سابقه
+                        </button>
+                    </form>
+                @endif
+
+                <p class="text-[11px] text-gray-400 leading-6 pt-1">
+                    بازگشت دستگاه با هماهنگی پشتیبانی گیم‌پک انجام می‌شود.
+                </p>
+            </div>
+        </section>
     @endif
 
     {{-- Chain history. Every transition is recorded, so the customer can see

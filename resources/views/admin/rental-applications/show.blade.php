@@ -70,6 +70,40 @@
         </form>
     </x-admin.panel>
     @endcan
+
+    {{-- The physical tasks that move the rental's own lifecycle. Each button
+         only appears at the rung it belongs to: delivery starts the rental,
+         and the return -- coordinated through support, never self-service --
+         ends it. The service refuses either if its preconditions do not hold,
+         so these are entry points, not authority. --}}
+    @can('manage_operations')
+    @if (in_array($application->state, [App\Enums\RentalApplicationState::Approved, App\Enums\RentalApplicationState::Active], true))
+    <x-admin.panel padded>
+        <h2 class="font-bold text-gray-800 text-sm mb-4">عملیات فیزیکی</h2>
+
+        @if ($application->state === App\Enums\RentalApplicationState::Approved)
+            <form method="POST" action="{{ route('admin.rental-applications.delivery.open', $application) }}"
+                  data-confirm="عملیات تحویل به مشتری ایجاد شود؟">
+                @csrf
+                <button type="submit" class="w-full bg-brandBlue hover:bg-blue-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">
+                    <i class="fa-solid fa-truck ml-1"></i> ایجاد عملیات تحویل به مشتری
+                </button>
+            </form>
+            <p class="text-[11px] text-gray-400 mt-3 leading-6">
+                اجاره تنها با تکمیل همین تحویل فعال می‌شود؛ رسیدن تاریخ شروع به‌تنهایی آن را فعال نمی‌کند.
+            </p>
+        @else
+            <form method="POST" action="{{ route('admin.rental-applications.return.open', $application) }}"
+                  data-confirm="عملیات بازگشت دستگاه از مشتری ایجاد شود؟">
+                @csrf
+                <button type="submit" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">
+                    <i class="fa-solid fa-rotate-left ml-1"></i> ایجاد عملیات بازگشت دستگاه
+                </button>
+            </form>
+        @endif
+    </x-admin.panel>
+    @endif
+    @endcan
 </div>
 
 <x-admin.panel padded class="mt-5">

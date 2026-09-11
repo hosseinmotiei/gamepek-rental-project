@@ -7,6 +7,7 @@ use App\Enums\RentalOperationType;
 use App\Http\Controllers\Controller;
 use App\Models\AuditEvent;
 use App\Models\Device;
+use App\Models\RentalApplication;
 use App\Models\RentalOperation;
 use App\Models\RentalReservation;
 use App\Services\Audit\AuditLogger;
@@ -196,20 +197,88 @@ class OperationController extends Controller
         try {
             DB::transaction(function () use ($request, $operation) {
                 $this->operations->start($operation, $request->user());
-                $this->custody->requestFromOwner($operation, $request->user());
+
+                // Which custody leg opens depends on the task. The service
+                // decides whether that leg is legal for this device and
+                // refuses it otherwise; nothing here chooses actors.
+                match ($operation->type) {
+                    RentalOperationType::OwnerDevicePickup => $this->custody->requestFromOwner($operation, $request->user()),
+                    RentalOperationType::CustomerDelivery => $this->custody->requestDeliveryToCustomer($operation, $request->user()),
+                    RentalOperationType::CustomerReturn => $this->custody->requestReturnFromCustomer($operation, $request->user()),
+                };
             });
         } catch (\RuntimeException $e) {
             return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('success', 'عملیات آغاز شد و درخواست تحویل برای مالک ثبت شد.');
+        return back()->with('success', 'عملیات آغاز شد و سابقه تحویل برای آن باز شد.');
     }
 
     /**
-     * Record that GamePek physically received the device.
+     * Open the task for delivering the device to the customer.
      *
-     * This is the moment custody moves; ownership does not, and the service
-     * asserts that rather than assuming it.
+     * CONFIRMED RULE: completing that task is the only thing that starts a
+     * rental. The service refuses to open it unless the application is
+     * approved and a device is already allocated.
+     */
+    public function openDelivery(Request $request, RentalApplication $rentalApplication)
+    {
+        abort_if(! $request->user()->can('manage_operations'), 403);
+
+        $reservation = $rentalApplication->reservation()->first();
+
+        if ($reservation === null) {
+            return back()->with('error', 'برای این درخواست رزروی ثبت نشده است.');
+        }
+
+        try {
+            $operation = $this->operations->openDeliveryForReservation($reservation, $request->user());
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return redirect()
+            ->route('admin.operations.show', $operation)
+            ->with('success', 'عملیات تحویل به مشتری ایجاد شد.');
+    }
+
+    /**
+     * Open the task for taking the device back from the customer.
+     *
+     * CONFIRMED RULE: the return is arranged through support, so staff open
+     * it; there is no customer-facing control for this.
+     */
+    public function openReturn(Request $request, RentalApplication $rentalApplication)
+    {
+        abort_if(! $request->user()->can('manage_operations'), 403);
+
+        $reservation = $rentalApplication->reservation()->first();
+
+        if ($reservation === null) {
+            return back()->with('error', 'برای این درخواست رزروی ثبت نشده است.');
+        }
+
+        try {
+            $operation = $this->operations->openReturnForReservation($reservation, $request->user());
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return redirect()
+            ->route('admin.operations.show', $operation)
+            ->with('success', 'عملیات بازگشت دستگاه از مشتری ایجاد شد.');
+    }
+
+    /**
+     * Record that possession physically moved, whichever leg this task is.
+     *
+     * Custody moves here; ownership does not, and the service asserts that
+     * rather than assuming it. For a delivery this is also the moment the
+     * device is checked at the customer's door -- `notes` carries that
+     * condition record (free text: no damage taxonomy is defined).
+     *
+     * Completing a delivery or a return is what moves the rental's own
+     * lifecycle, through the orchestrator. See RentalOperationService.
      */
     public function recordCustody(Request $request, RentalOperation $operation)
     {
@@ -219,8 +288,14 @@ class OperationController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
+        $notes = $data['notes'] ?? null;
+
         try {
-            $this->custody->recordHandoverToGamePek($operation, $request->user(), $data['notes'] ?? null);
+            match ($operation->type) {
+                RentalOperationType::OwnerDevicePickup => $this->custody->recordHandoverToGamePek($operation, $request->user(), $notes),
+                RentalOperationType::CustomerDelivery => $this->custody->recordDeliveryToCustomer($operation, $request->user(), $notes),
+                RentalOperationType::CustomerReturn => $this->custody->recordReturnToGamePek($operation, $request->user(), $notes),
+            };
         } catch (\RuntimeException $e) {
             return back()->with('error', $e->getMessage());
         }

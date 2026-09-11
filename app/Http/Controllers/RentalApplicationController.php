@@ -12,6 +12,7 @@ use App\Services\Guarantee\GuaranteeService;
 use App\Services\OtpService;
 use App\Services\PaymentService;
 use App\Services\Providers\ProviderException;
+use App\Services\Rental\DeviceCustodyService;
 use App\Services\Rental\RentalChainOrchestrator;
 use App\Services\Rental\RentalReservationService;
 use Illuminate\Http\Request;
@@ -36,6 +37,7 @@ class RentalApplicationController extends Controller
         private ContractService $contracts,
         private OtpService $otp,
         private SignatureOtpService $signatureOtp,
+        private DeviceCustodyService $custody,
     ) {}
 
     /**
@@ -110,6 +112,9 @@ class RentalApplicationController extends Controller
             'user.identity', 'user.bankAccounts',
             'reservation.product', 'order', 'guarantee.inquiries',
             'contract.signatures', 'transitions',
+            // Delivery and return status. Model::shouldBeStrict() means every
+            // relation the view touches must be loaded here.
+            'reservation.operations.custodyTransfer',
         ]);
 
         // Re-derive before rendering. A customer can finish a step elsewhere
@@ -121,9 +126,52 @@ class RentalApplicationController extends Controller
             'user.identity', 'user.bankAccounts',
             'reservation.product', 'order', 'guarantee.inquiries',
             'contract.signatures', 'transitions',
+            'reservation.operations.custodyTransfer',
         ]);
 
         return view('rental.application', ['application' => $application]);
+    }
+
+    /**
+     * The customer confirms GamePek's record of a handover they were part of.
+     *
+     * This is a CONFIRMATION of a record, nothing more: it moves no device, it
+     * is not a signature, and it makes no statement about the condition of the
+     * hardware. The receipt signed at the door is the operational document;
+     * this only says the customer agrees the record matches it.
+     *
+     * Authorization runs twice on purpose -- the policy proves this
+     * application belongs to the caller, and DeviceCustodyService checks the
+     * same thing again against the transfer it is handed, so no posted id can
+     * reach another customer's handover.
+     */
+    public function acknowledgeHandover(Request $request, RentalApplication $application)
+    {
+        $this->authorize('update', $application);
+
+        $data = $request->validate([
+            'operation' => ['required', 'integer'],
+        ]);
+
+        // Resolved THROUGH the authorized application, never from the id
+        // alone: an operation belonging to someone else cannot be named here.
+        $operation = $application->reservation?->operations()
+            ->where('id', $data['operation'])
+            ->first();
+
+        $transfer = $operation?->custodyTransfer()->first();
+
+        if ($transfer === null) {
+            return $this->fail($request, 'سابقه تحویلی برای تأیید وجود ندارد.', 422);
+        }
+
+        try {
+            $this->custody->acknowledgeByCustomer($transfer, $request->user());
+        } catch (\RuntimeException $e) {
+            return $this->fail($request, $e->getMessage(), 422);
+        }
+
+        return $this->ok($request, 'دریافت دستگاه توسط شما تأیید شد.');
     }
 
     public function reserve(Request $request, RentalApplication $application)

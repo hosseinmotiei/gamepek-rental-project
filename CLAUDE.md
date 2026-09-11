@@ -47,9 +47,9 @@ repository has a **test suite of 171 test methods**.
 | Contract generation, acceptance, OTP signing | Mechanism implemented; **text has no legal validity** |
 | Admin verification / rental-application / audit screens | Implemented |
 | Reservation release or expiry | **Not implemented** |
-| Post-approval lifecycle (Active / Returned / Closed) | **Deliberately blocked — B14** |
+| Post-approval lifecycle | Active and Returned **implemented** — driven by delivery/return operations. Closed still **blocked (B14)** |
 | Owner / lessor domain | Implemented — owners, mixed fleet, serials, admin review |
-| Operational task domain (owner device pickup) | Implemented — pickup only |
+| Operational task domain | Implemented — owner pickup, customer delivery, customer return |
 | Device custody history (owner -> GamePek) | Implemented — custody is separate from ownership |
 | Live payment gateway | Not implemented — no credentials |
 | Live KYC / bank / cheque providers | Not implemented — none chosen |
@@ -58,8 +58,8 @@ repository has a **test suite of 171 test methods**.
 | Wallet-driven settlement, payout, deposit, refund, damage charges | **Not implemented** |
 | Customer profile wallet tab | Still **frontend `localStorage` prototype**, not connected to the real backend |
 | Device allocation to a reservation | Manual admin attachment implemented (`attachDevice()`), now with device-level overlap safety — **selection policy itself remains undecided (section 10.3b)** |
-| Inspection / delivery / customer return / owner return / damage | Not implemented |
-| Receipt or signature for a custody handover | **Not implemented — open legal gate** |
+| Delivery / customer return | Implemented (staff-driven). **Inspection, owner return and damage: not implemented** |
+| Receipt/signature for a handover | Receipt reference recorded at the door; **whether a digital signature may replace the paper one is undecided** |
 
 The catalog entity is still named `Product`/`products`, and rental facts live
 in `products.attributes['_rental']` (JSON) with **no rental columns**.
@@ -171,14 +171,26 @@ Draft
                  └─ GuaranteePending → GuaranteeVerified
                      └─ ContractGenerated → ContractAccepted → ContractSigned
                          └─ AwaitingFinalApproval → Approved
-                             └─ Active → Returned → Closed   ← B14, blocked
+                             └─ Active → Returned → Closed   ← B14, partly decided
 ```
 
-`transitionPostApproval()` is the single future attachment point for the last
-three states. Every trigger in `config('rental.lifecycle.*')` is `null`, so
-it refuses every call and records `rental_application.policy_undefined`.
-**No route exposes it, and `nextState()` never derives those states.** An
-approved rental stays approved.
+`transitionPostApproval()` is the single attachment point for the last three
+states, and it is still the ONLY thing that writes them.
+
+- **Approved → Active** fires when a `customer_delivery` operation completes,
+  and nothing else does it. CONFIRMED: a rental starts when GamePek
+  physically hands the device to the customer — **not** when the start date
+  arrives.
+- **Active → Returned** fires when a `customer_return` operation completes.
+  The return is arranged through support; there is no customer-facing
+  control that starts one.
+- **Returned → Closed** is still refused: `config('rental.lifecycle.closure_trigger')`
+  is `null`, so it records `rental_application.policy_undefined`. Closure
+  waits on deposit release (B4), damage assessment and media retention (B11).
+
+`nextState()` still derives none of these, and **no route posts a state** —
+the two staff routes that exist open an *operation*, whose completion asks
+the orchestrator. See `docs/operations/OPERATIONS_AND_CUSTODY.md` §13.
 
 Related invariants worth preserving:
 
@@ -264,7 +276,7 @@ Each is marked in code with `TODO(business)` beside the decision point, has a
 | B11 | Media retention period, per kind |
 | B12 | Official contract text — the current template has **no legal validity** |
 | B13 | Rental-event SMS templates |
-| B14 | Post-approval triggers: Active / Returned / Closed |
+| B14 | Post-approval triggers — **Active and Returned decided** (delivery/return completion); **Closed still undecided** |
 | — | Whether the calendar blocks at reservation time or at payment time |
 | — | Duration discount tiers in `config('rental.pricing.duration_discounts')` are a **placeholder**, not owner-approved pricing |
 

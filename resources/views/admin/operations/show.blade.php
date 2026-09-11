@@ -8,6 +8,34 @@
 @php
     use App\Enums\CustodyActor;
     use App\Enums\RentalOperationState;
+    use App\Enums\RentalOperationType;
+
+    // The same three controls serve every leg; only what they are called
+    // changes, because the leg decides who hands what to whom.
+    $startLabel = match ($operation->type) {
+        RentalOperationType::CustomerDelivery => 'آغاز تحویل و باز کردن سابقه',
+        RentalOperationType::CustomerReturn => 'آغاز بازگشت و باز کردن سابقه',
+        default => 'آغاز عملیات و درخواست تحویل',
+    };
+
+    $recordTitle = match ($operation->type) {
+        RentalOperationType::CustomerDelivery => 'ثبت تحویل دستگاه به مشتری',
+        RentalOperationType::CustomerReturn => 'ثبت دریافت دستگاه از مشتری',
+        default => 'ثبت تحویل گرفتن دستگاه',
+    };
+
+    $recordHint = match ($operation->type) {
+        RentalOperationType::CustomerDelivery =>
+            'فقط زمانی ثبت کنید که دستگاه عملاً به مشتری تحویل داده شده و رسید آن امضا شده است. با این کار اجاره فعال می‌شود.',
+        RentalOperationType::CustomerReturn =>
+            'فقط زمانی ثبت کنید که دستگاه عملاً از مشتری دریافت شده است. با این کار اجاره در وضعیت بازگشت‌داده‌شده ثبت می‌شود.',
+        default =>
+            'فقط زمانی ثبت کنید که دستگاه را عملاً تحویل گرفته‌اید. با این کار عملیات تکمیل می‌شود. بازرسی و تأیید وضعیت فیزیکی در این مرحله انجام نمی‌شود.',
+    };
+
+    $notesPlaceholder = $operation->type === RentalOperationType::OwnerDevicePickup
+        ? 'یادداشت (اختیاری)'
+        : 'وضعیت دستگاه هنگام تحویل (اختیاری)';
 
     $badge = match ($operation->state) {
         RentalOperationState::Completed => 'bg-green-50 text-green-700 border-green-200',
@@ -239,22 +267,19 @@
             @if (in_array($operation->state, [RentalOperationState::Scheduled, RentalOperationState::Failed], true))
                 <form method="POST" action="{{ route('admin.operations.start', $operation) }}">
                     @csrf
-                    <button type="submit" class="w-full bg-brandBlue text-white rounded-xl px-4 py-3 text-sm font-bold">آغاز عملیات و درخواست تحویل</button>
+                    <button type="submit" class="w-full bg-brandBlue text-white rounded-xl px-4 py-3 text-sm font-bold">{{ $startLabel }}</button>
                 </form>
             @endif
 
             @if ($operation->state === RentalOperationState::InProgress)
                 <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <h3 class="text-sm font-black text-gray-800 mb-1">ثبت تحویل گرفتن دستگاه</h3>
-                    <p class="text-[11px] text-gray-400 mb-4 leading-6">
-                        فقط زمانی ثبت کنید که دستگاه را عملاً تحویل گرفته‌اید. با این کار عملیات تکمیل می‌شود.
-                        بازرسی و تأیید وضعیت فیزیکی در این مرحله انجام نمی‌شود.
-                    </p>
+                    <h3 class="text-sm font-black text-gray-800 mb-1">{{ $recordTitle }}</h3>
+                    <p class="text-[11px] text-gray-400 mb-4 leading-6">{{ $recordHint }}</p>
                     <form method="POST" action="{{ route('admin.operations.custody', $operation) }}" class="space-y-3">
                         @csrf
-                        <textarea name="notes" rows="2" placeholder="یادداشت (اختیاری)"
+                        <textarea name="notes" rows="2" placeholder="{{ $notesPlaceholder }}"
                                   class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue"></textarea>
-                        <button type="submit" data-confirm="تحویل گرفتن دستگاه ثبت شود؟"
+                        <button type="submit" data-confirm="{{ $recordTitle }}؟"
                                 class="w-full bg-green-600 text-white rounded-xl px-4 py-2.5 text-sm font-bold">ثبت تحویل</button>
                     </form>
                 </div>

@@ -195,6 +195,14 @@ Route::middleware('auth')->group(function () {
         Route::post('/{application}/contract/sign', [RentalApplicationController::class, 'signContract'])
             ->middleware('throttle:rental-signature')
             ->name('contract.sign');
+
+        // The customer confirming GamePek's record of a handover they were
+        // part of. It moves nothing: the device has already changed hands and
+        // this only says the record matches. There is deliberately NO
+        // customer-facing control for starting a return -- that is arranged
+        // through support, per the confirmed process.
+        Route::post('/{application}/handover/acknowledge', [RentalApplicationController::class, 'acknowledgeHandover'])
+            ->name('handover.acknowledge');
     });
 
     // ──────────────────────────────────────────────────────────────────────
@@ -434,6 +442,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{rentalApplication}/guarantee/verify', [AdminRentalApplicationController::class, 'verifyGuarantee'])->name('guarantee.verify');
             Route::post('/{rentalApplication}/guarantee/reject', [AdminRentalApplicationController::class, 'rejectGuarantee'])->name('guarantee.reject');
             Route::post('/{rentalApplication}/contract/void', [AdminRentalApplicationController::class, 'voidContract'])->name('contract.void');
+
+            // Opening the physical tasks that move the rental's own lifecycle:
+            // completing the delivery starts the rental, completing the return
+            // ends it. Both are staff actions -- the return is coordinated
+            // through support, never self-service.
+            Route::post('/{rentalApplication}/delivery', [AdminOperationController::class, 'openDelivery'])->name('delivery.open');
+            Route::post('/{rentalApplication}/return', [AdminOperationController::class, 'openReturn'])->name('return.open');
         });
 
         Route::get('/audit-events', [AdminAuditEventController::class, 'index'])->name('audit-events.index');

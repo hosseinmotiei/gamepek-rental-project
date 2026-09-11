@@ -7,6 +7,7 @@ use App\Enums\CustodyTransferState;
 use App\Enums\CustodyTransferType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
@@ -84,6 +85,41 @@ class DeviceCustodyTransfer extends Model
     public function toOwner(): BelongsTo
     {
         return $this->belongsTo(Owner::class, 'to_owner_id');
+    }
+
+    /**
+     * CONFIRMED RULE: "The owner has 2 hours after GamePek receives the device
+     * to report a defect. After that, GamePek has no responsibility for that
+     * defect; disputes are handled through the contracts, receipts and
+     * evidence held by GamePek."
+     *
+     * This is the window's arithmetic and nothing else. Deliberately NOT
+     * implemented here, because none of it is decided: no notification is
+     * sent, no penalty or charge is computed, no deposit or refund is touched,
+     * and no defect-report record type exists yet. A caller gets a deadline
+     * and a yes/no; what anyone does about it is not this model's business.
+     */
+    public const OWNER_DEFECT_REPORT_WINDOW_HOURS = 2;
+
+    /**
+     * When the owner's defect-report window closes, or null when this transfer
+     * never put the device in GamePek's hands (a delivery to the customer
+     * starts no such window) or possession has not moved yet.
+     */
+    public function ownerDefectReportDeadline(): ?Carbon
+    {
+        if (! $this->transfer_type->endsInGamePekCustody() || $this->transferred_at === null) {
+            return null;
+        }
+
+        return $this->transferred_at->copy()->addHours(self::OWNER_DEFECT_REPORT_WINDOW_HOURS);
+    }
+
+    public function isWithinOwnerDefectReportWindow(?Carbon $at = null): bool
+    {
+        $deadline = $this->ownerDefectReportDeadline();
+
+        return $deadline !== null && ($at ?? now())->lessThan($deadline);
     }
 
     /** Has possession actually moved? `requested` means it has not. */

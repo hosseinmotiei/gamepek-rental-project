@@ -89,23 +89,35 @@ return [
     /*
      * The post-approval lifecycle: Approved -> Active -> Returned -> Closed.
      *
-     * TODO(business) B14. Every trigger below is null because the project
-     * defines none of them:
+     * B14 is now PARTLY DECIDED. Two of the three triggers are confirmed
+     * business rules and are named below; the third is still open.
      *
-     *   activation -- does a rental become Active on handover, on the
-     *                 reservation's start date, or on an admin's action?
-     *   return     -- who confirms a return, and does it require the
-     *                 return_video, an inspection, or a damage assessment?
-     *   closure    -- closure plausibly waits on the deposit being released
-     *                 (B4) and on media retention (B11), both undecided.
+     *   activation -- CONFIRMED: a rental becomes Active only when GamePek
+     *                 physically delivers the device to the customer, i.e.
+     *                 when the `customer_delivery` operation completes. It
+     *                 does NOT become Active because the reservation's start
+     *                 date arrived.
+     *   return     -- CONFIRMED: the rental becomes Returned when the
+     *                 customer's device is received back by GamePek, i.e.
+     *                 when the `customer_return` operation completes. The
+     *                 return itself is arranged through support, not
+     *                 self-service.
+     *   closure    -- STILL UNDECIDED. Closure plausibly waits on the deposit
+     *                 being released (B4), on damage assessment (the amount
+     *                 is set by a GamePek expert, with no formula defined),
+     *                 and on media retention (B11). None of those are
+     *                 decided, so this stays null and Returned -> Closed
+     *                 keeps refusing with `rental_application.policy_undefined`.
      *
-     * While a trigger is null RentalChainOrchestrator::transitionPostApproval()
-     * refuses the transition and records `rental_application.policy_undefined`.
-     * Nothing derives these states, and no route exposes them.
+     * A null trigger still means RentalChainOrchestrator::transitionPostApproval()
+     * refuses that transition. The two named triggers are produced ONLY by
+     * RentalOperationService completing the matching operation type -- no
+     * route lets anyone post a state, and the orchestrator remains the sole
+     * writer of `rental_applications.state`.
      */
     'lifecycle' => [
-        'activation_trigger' => null,
-        'return_trigger' => null,
+        'activation_trigger' => env('RENTAL_ACTIVATION_TRIGGER', 'customer_delivery_completed'),
+        'return_trigger' => env('RENTAL_RETURN_TRIGGER', 'customer_return_completed'),
         'closure_trigger' => null,
     ],
 
