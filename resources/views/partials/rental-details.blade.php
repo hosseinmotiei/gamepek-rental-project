@@ -137,15 +137,14 @@
 </section>
 @endif
 
-{{-- Deposit --}}
+{{-- Guarantee. CONFIRMED: no cash deposit; the customer pays the full
+     rental and gives a physical promissory note. The product's legacy
+     "deposit" figure is not shown to customers -- its meaning is undecided
+     and showing it would imply a cash deposit. --}}
 <section class="mt-4 bg-brandLightBlue rounded-2xl p-5">
-    <h2 class="font-bold text-gray-800">ضمانت / ودیعه</h2>
-    <p class="mt-2 text-xl font-black text-gray-900">{{ persian_number($rental->deposit()) }} <span class="text-sm font-medium text-gray-500">تومان</span></p>
-    {{-- No delivery/return workflow exists yet, so this must not promise a
-         collection or refund timeline -- only what is already true: it is
-         not part of the rental cost and is not charged at this stage. --}}
+    <h2 class="font-bold text-gray-800">ضمانت</h2>
     <p class="mt-2 text-sm leading-7 text-gray-600">
-        این مبلغ بخشی از هزینه اجاره نیست و در این مرحله دریافت نمی‌شود.
+        ضمانت اجاره با سفته فیزیکی است و هیچ مبلغی به‌عنوان ودیعه نقدی دریافت نمی‌شود.
     </p>
 </section>
 

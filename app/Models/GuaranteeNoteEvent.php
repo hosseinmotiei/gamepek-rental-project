@@ -16,6 +16,9 @@ class GuaranteeNoteEvent extends Model
 
     public const TRANSFERRED_TO_OWNER = 'transferred_to_owner';
 
+    /** GamePek-owned device, damage unpaid: there is no owner, GamePek keeps it. */
+    public const RETAINED_BY_GAMEPEK = 'retained_by_gamepek';
+
     public const BASIS_NO_DAMAGE = 'no_damage';
 
     public const BASIS_DAMAGE_PAID = 'damage_paid';

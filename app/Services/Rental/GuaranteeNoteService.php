@@ -32,6 +32,11 @@ use Illuminate\Support\Facades\DB;
  * here from the application, never from a request. Return and transfer are
  * mutually exclusive, enforced under a row lock and by unique indexes.
  *
+ * CONFIRMED since: a GamePek-owned device has no owner, so for unpaid damage
+ * the note stays with GamePek (retainByGamePek). A rental cancelled after
+ * the note was received leaves it HELD: cancellation returns, transfers and
+ * retains nothing, and no future action for that case is invented here.
+ *
  * NOT DONE HERE: any legal wording, deadline for the customer to pay, court or
  * collection workflow. "The customer did not pay" is a staff decision recorded
  * by calling transferToOwner(); nothing infers it from elapsed time.
@@ -47,6 +52,7 @@ class GuaranteeNoteService
         return match (true) {
             in_array(GuaranteeNoteEvent::RETURNED_TO_CUSTOMER, $events, true) => GuaranteeNoteStatus::ReturnedToCustomer,
             in_array(GuaranteeNoteEvent::TRANSFERRED_TO_OWNER, $events, true) => GuaranteeNoteStatus::TransferredToOwner,
+            in_array(GuaranteeNoteEvent::RETAINED_BY_GAMEPEK, $events, true) => GuaranteeNoteStatus::RetainedByGamePek,
             in_array(GuaranteeNoteEvent::RECEIVED, $events, true) => GuaranteeNoteStatus::HeldByGamePek,
             default => GuaranteeNoteStatus::NotReceived,
         };
@@ -132,6 +138,37 @@ class GuaranteeNoteService
         });
     }
 
+    /**
+     * CONFIRMED: a GamePek-owned device has no owner to receive the note, so
+     * for unpaid damage the note stays with GamePek. This records that
+     * outcome -- it starts no legal or recovery workflow.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function retainByGamePek(RentalApplication $application, User $actor, ?string $notes = null): GuaranteeNoteEvent
+    {
+        return $this->write($application, $actor, GuaranteeNoteEvent::RETAINED_BY_GAMEPEK, $notes, function (RentalApplication $app) {
+            $this->assertReturnedAndInspected($app);
+
+            $damage = $this->damage->statusFor($app->id);
+
+            if ($damage['status'] !== RentalDamageAssessmentService::UNPAID) {
+                throw new \RuntimeException('سفته فقط در صورت خسارت پرداخت‌نشده نزد گیم‌پک نگه داشته می‌شود.');
+            }
+
+            $device = RentalReservation::where('rental_application_id', $app->id)->firstOrFail()->device()->first();
+
+            if ($device === null || $device->ownership !== DeviceOwnership::GamePek) {
+                throw new \RuntimeException('این دستگاه مالک جداگانه دارد؛ سفته باید به مالک تحویل شود.');
+            }
+
+            return [
+                'device_id' => $device->id,
+                'rental_damage_assessment_id' => $damage['assessment']->id,
+            ];
+        });
+    }
+
     private function assertReturnedAndInspected(RentalApplication $app): void
     {
         if ($app->state !== RentalApplicationState::Returned) {
@@ -176,7 +213,11 @@ class GuaranteeNoteService
                 }
 
                 // Returned XOR transferred: whichever happened first stands.
-                if (array_intersect($events, [GuaranteeNoteEvent::RETURNED_TO_CUSTOMER, GuaranteeNoteEvent::TRANSFERRED_TO_OWNER]) !== []) {
+                if (array_intersect($events, [
+                    GuaranteeNoteEvent::RETURNED_TO_CUSTOMER,
+                    GuaranteeNoteEvent::TRANSFERRED_TO_OWNER,
+                    GuaranteeNoteEvent::RETAINED_BY_GAMEPEK,
+                ]) !== []) {
                     throw new \RuntimeException('سفته این اجاره قبلاً تعیین تکلیف شده است.');
                 }
             }

@@ -17,7 +17,7 @@
 
 <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
     <div>
-        <h1 class="text-lg font-bold text-gray-800">{{ $wallet->user?->full_name ?: '—' }}</h1>
+        <h1 class="text-lg font-bold text-gray-800">{{ $wallet->holderLabel() }}</h1>
         <p class="text-xs text-gray-500 mt-0.5 font-mono" dir="ltr">{{ $wallet->user?->mobile }}</p>
     </div>
     <div class="text-left">

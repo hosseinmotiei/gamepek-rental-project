@@ -59,8 +59,8 @@ repository has a **test suite of 171 test methods**.
 | Customer profile wallet tab | Still **frontend `localStorage` prototype**, not connected to the real backend |
 | Device allocation to a reservation | Manual admin attachment implemented (`attachDevice()`), now with device-level overlap safety — **selection policy itself remains undecided (section 10.3b)** |
 | Delivery / customer return / owner return | Implemented (staff-driven), all four custody legs. Inspection: **free-text append-only evidence only**. Damage: **expert amount recorded (append-only), never charged** (docs/operations/OPERATIONS_AND_CUSTODY.md §14–§15) |
-| Settlement (35/65) | **Implemented**: rental price only, owner credited once to the Owner Wallet via `WalletService` after the settlement point. **No scheduled daily run** |
-| Promissory note / damage payment | **Implemented** (`GuaranteeNoteService`, `rental_damage_payments`); never modelled as money |
+| Settlement (35/65) | **Implemented**: `rental_total` only, owner credited once to the Owner Wallet via `WalletService`. **Manual by decision (C-48)** — no scheduler |
+| Promissory note / damage payment | **Implemented** (`GuaranteeNoteService`, `rental_damage_payments`); the note is never money; paid damage credits the GamePek system wallet in full (C-50) |
 | Closure | **Implemented**: `RentalChainOrchestrator::close()`, explicit and gated by `RentalClosureReadiness`; never automatic (docs/operations/OPERATIONS_AND_CUSTODY.md §16) |
 | Receipt/signature for a handover | Receipt reference recorded at the door; **whether a digital signature may replace the paper one is undecided** |
 

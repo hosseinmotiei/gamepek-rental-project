@@ -85,7 +85,10 @@ class RentalClosureReadiness
         $items[] = $this->item('damage_resolution', 'تعیین تکلیف خسارت',
             match (true) {
                 in_array($damage, [RentalDamageAssessmentService::NO_DAMAGE, RentalDamageAssessmentService::PAID], true) => self::SATISFIED,
-                $damage === RentalDamageAssessmentService::UNPAID && $note === GuaranteeNoteStatus::TransferredToOwner => self::SATISFIED,
+                // Unpaid damage is resolved by the note's final outcome: to the
+                // owner (owner device) or kept by GamePek (GamePek device).
+                $damage === RentalDamageAssessmentService::UNPAID
+                    && in_array($note, [GuaranteeNoteStatus::TransferredToOwner, GuaranteeNoteStatus::RetainedByGamePek], true) => self::SATISFIED,
                 default => self::MISSING,
             },
             RentalDamageAssessmentService::statusLabel($damage));

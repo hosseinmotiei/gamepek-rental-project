@@ -6,7 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * The customer's direct payment of one assessed damage amount. Append-only;
- * written by RentalDamageAssessmentService alone. Credits no wallet.
+ * written by RentalDamageAssessmentService alone, together with the GamePek
+ * wallet credit it points to (wallet_transaction_id).
  */
 class RentalDamagePayment extends Model
 {

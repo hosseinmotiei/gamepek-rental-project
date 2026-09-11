@@ -627,10 +627,33 @@ ledger evidence, amount mismatches, duplicate owner credits, ledger credits
 without a settlement record, ineligible settlements, Closed rentals missing
 prerequisites, contradictory note outcomes and damage-payment mismatches.
 
-Still NOT decided: the automatic *daily* settlement run; where a damage
-payment's money goes; what happens to the note for unpaid damage on a
-GamePek-owned device; any deadline for the customer to pay; what the
-product's `deposit` figure means now that no cash deposit exists.
+Aligned with C-48–C-52:
+
+- Settlement stays a manual staff action; no scheduler exists (C-48).
+- A damage payment credits the **GamePek system wallet**
+  (`wallets.purpose = 'gamepek'`, held by no user) through
+  `WalletService::creditGamePek()`, key `damage:{assessment_id}:gamepek`;
+  `rental_damage_payments.wallet_transaction_id` names that entry. It never
+  touches the owner's split (C-50).
+- GamePek-owned device, unpaid damage: `GuaranteeNoteService::retainByGamePek()`
+  records the final outcome `retained_by_gamepek`; closure no longer waits
+  for an owner that does not exist (C-51).
+- A cancelled rental leaves a received note **held**; every note outcome,
+  damage payment and settlement requires a Returned rental, so cancellation
+  produces none of them (C-52).
+- New reconciler checks: damage payment without / mismatching its GamePek
+  credit, duplicate damage credit, note transferred for GamePek stock,
+  financial effect on a cancelled/rejected rental, settlement base ≠
+  `rental_total`, deposit figure inside `payable_now`.
+- Customer screens no longer show a "ودیعه" amount: the guarantee is shown
+  as a physical promissory note with no cash deposit.
+
+Still NOT decided: the final action for a note held on a cancelled rental;
+whether a customer may still pay after the note was retained by GamePek
+(currently refused, like after an owner transfer); the meaning of the
+product's legacy `deposit` figure (still stored as
+`reservation.deposit_amount`, shown to staff only, and fed into the
+contract template's `deposit_amount` placeholder).
 
 ## 12. Delivery / customer custody feasibility analysis -- superseded by §13
 

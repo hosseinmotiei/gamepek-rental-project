@@ -16,6 +16,7 @@ use App\Models\RentalDamageAssessment;
 use App\Models\RentalDamagePayment;
 use App\Models\RentalInspection;
 use App\Models\RentalOperation;
+use App\Models\RentalReservation;
 use App\Models\RentalSettlement;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
@@ -97,6 +98,27 @@ class OperationCustodyReconciler
     /** A damage payment for a different amount than its assessment. */
     public const DAMAGE_PAYMENT_MISMATCH = 'damage_payment_mismatch';
 
+    /** A damage payment with no valid GamePek wallet credit behind it. */
+    public const DAMAGE_PAYMENT_WITHOUT_WALLET_CREDIT = 'damage_payment_without_wallet_credit';
+
+    /** A damage payment and its GamePek credit disagree on the amount. */
+    public const DAMAGE_PAYMENT_WALLET_MISMATCH = 'damage_payment_wallet_mismatch';
+
+    /** One assessment credited to the GamePek wallet more than once. */
+    public const DUPLICATE_DAMAGE_WALLET_CREDIT = 'duplicate_damage_wallet_credit';
+
+    /** A note handed to an owner for a GamePek-owned device. */
+    public const NOTE_TRANSFERRED_FOR_GAMEPEK_DEVICE = 'note_transferred_for_gamepek_device';
+
+    /** A cancelled/rejected rental with a settlement, credit, payment or note outcome. */
+    public const CANCELLED_RENTAL_FINANCIAL_EFFECT = 'cancelled_rental_financial_effect';
+
+    /** A settlement whose gross is not the reservation's rental_total. */
+    public const SETTLEMENT_BASE_MISMATCH = 'settlement_base_mismatch';
+
+    /** A reservation whose payable amount includes the deposit figure. */
+    public const DEPOSIT_IN_PAYMENT = 'deposit_in_payment';
+
     /** The completed task and its transfer describe different legs. */
     public const TRANSFER_TYPE_MISMATCH = 'transfer_type_mismatch';
 
@@ -154,6 +176,13 @@ class OperationCustodyReconciler
             self::CLOSED_WITHOUT_PREREQUISITES => 'اجاره بسته شده اما پیش‌نیازهای بستن کامل نیست',
             self::NOTE_RETURNED_AND_TRANSFERRED => 'سفته هم به مشتری بازگردانده و هم به مالک تحویل شده است',
             self::DAMAGE_PAYMENT_MISMATCH => 'مبلغ پرداخت خسارت با ارزیابی هم‌خوان نیست',
+            self::DAMAGE_PAYMENT_WITHOUT_WALLET_CREDIT => 'پرداخت خسارت بدون واریز معتبر به کیف پول گیم‌پک',
+            self::DAMAGE_PAYMENT_WALLET_MISMATCH => 'مبلغ واریز خسارت به کیف پول گیم‌پک با پرداخت هم‌خوان نیست',
+            self::DUPLICATE_DAMAGE_WALLET_CREDIT => 'یک خسارت بیش از یک بار به کیف پول گیم‌پک واریز شده است',
+            self::NOTE_TRANSFERRED_FOR_GAMEPEK_DEVICE => 'سفته دستگاه متعلق به گیم‌پک به مالک تحویل شده است',
+            self::CANCELLED_RENTAL_FINANCIAL_EFFECT => 'اجاره لغوشده اثر مالی یا تعیین تکلیف سفته دارد',
+            self::SETTLEMENT_BASE_MISMATCH => 'مبنای تسویه با مبلغ اجاره (بدون هزینه ارسال) برابر نیست',
+            self::DEPOSIT_IN_PAYMENT => 'مبلغ پرداختی شامل مبلغ ودیعه است',
             self::TRANSFER_TYPE_MISMATCH => 'نوع سابقه تحویل با نوع عملیات یکسان نیست',
             self::DEVICE_MISMATCH => 'دستگاه عملیات با دستگاه سابقه تحویل یکسان نیست',
             self::TRANSFERRED_BUT_NOT_COMPLETED => 'تحویل ثبت شده اما عملیات بسته نشده است',
@@ -459,11 +488,66 @@ class OperationCustodyReconciler
             ->filter(fn ($events) => $events->pluck('event')->unique()->count() > 1)
             ->each(fn ($events, $guaranteeId) => $add(self::NOTE_RETURNED_AND_TRANSFERRED, 'سفته ضمانت شماره '.$guaranteeId.' دو سرنوشت متناقض دارد.'));
 
+        $gamePekWalletId = Wallet::where('purpose', Wallet::PURPOSE_GAMEPEK)->value('id');
+
         foreach (RentalDamagePayment::all() as $payment) {
             if (RentalDamageAssessment::whereKey($payment->rental_damage_assessment_id)->value('amount') !== $payment->amount) {
                 $add(self::DAMAGE_PAYMENT_MISMATCH, 'پرداخت خسارت شماره '.$payment->id.' با مبلغ ارزیابی برابر نیست.');
             }
+
+            $entry = $payment->wallet_transaction_id ? WalletTransaction::find($payment->wallet_transaction_id) : null;
+
+            if ($entry === null || $entry->type !== WalletTransaction::TYPE_CREDIT || $entry->wallet_id !== $gamePekWalletId) {
+                $add(self::DAMAGE_PAYMENT_WITHOUT_WALLET_CREDIT, 'پرداخت خسارت شماره '.$payment->id.' به واریز معتبری در کیف پول گیم‌پک اشاره نمی‌کند.');
+            } elseif ($entry->amount !== $payment->amount) {
+                $add(self::DAMAGE_PAYMENT_WALLET_MISMATCH, 'مبلغ واریز پرداخت خسارت شماره '.$payment->id.' با پرداخت برابر نیست.');
+            }
+
+            $credits = WalletTransaction::where('context->rental_damage_assessment_id', $payment->rental_damage_assessment_id)->count();
+
+            if ($credits > 1) {
+                $add(self::DUPLICATE_DAMAGE_WALLET_CREDIT, 'ارزیابی خسارت شماره '.$payment->rental_damage_assessment_id.' '.$credits.' بار واریز شده است.');
+            }
         }
+
+        foreach (GuaranteeNoteEvent::where('event', GuaranteeNoteEvent::TRANSFERRED_TO_OWNER)->get(['id', 'device_id']) as $event) {
+            // value() returns the cast enum, so compare enums, not strings.
+            if (Device::whereKey($event->device_id)->first(['id', 'ownership'])?->ownership === DeviceOwnership::GamePek) {
+                $add(self::NOTE_TRANSFERRED_FOR_GAMEPEK_DEVICE, 'رویداد سفته شماره '.$event->id.' دستگاه گیم‌پک را به مالک نسبت داده است.');
+            }
+        }
+
+        $inactive = RentalApplication::whereIn('state', [
+            RentalApplicationState::Cancelled->value,
+            RentalApplicationState::Rejected->value,
+        ])->get(['id', 'application_number']);
+
+        foreach ($inactive as $application) {
+            $reservationId = RentalReservation::where('rental_application_id', $application->id)->value('id');
+
+            $effect = RentalDamagePayment::where('rental_application_id', $application->id)->exists()
+                || GuaranteeNoteEvent::where('rental_application_id', $application->id)->whereNotNull('final_marker')->exists()
+                || ($reservationId !== null && RentalSettlement::where('rental_reservation_id', $reservationId)->exists());
+
+            if ($effect) {
+                $add(self::CANCELLED_RENTAL_FINANCIAL_EFFECT, 'درخواست '.$application->application_number.' لغو یا رد شده اما اثر مالی یا تعیین تکلیف سفته دارد.');
+            }
+        }
+
+        foreach (RentalSettlement::all() as $settlement) {
+            $rentalTotal = RentalReservation::whereKey($settlement->rental_reservation_id)->value('rental_total');
+
+            if ($rentalTotal !== null && (int) $rentalTotal !== $settlement->gross_amount) {
+                $add(self::SETTLEMENT_BASE_MISMATCH, 'مبنای تسویه '.$settlement->reference_number.' با مبلغ اجاره برابر نیست.');
+            }
+        }
+
+        // A deposit is never collected: a payable amount that equals rental
+        // + delivery + deposit (with a real deposit figure) means it leaked in.
+        RentalReservation::where('deposit_amount', '>', 0)
+            ->whereRaw('payable_now = rental_total + delivery_fee + deposit_amount')
+            ->pluck('id')
+            ->each(fn ($id) => $add(self::DEPOSIT_IN_PAYMENT, 'رزرو شماره '.$id.' مبلغ ودیعه را در مبلغ پرداختی دارد.'));
 
         return collect($findings);
     }

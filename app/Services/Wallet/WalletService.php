@@ -90,8 +90,66 @@ class WalletService
     ): WalletTransaction {
         $this->assertPositiveAmount($amount);
 
-        return DB::transaction(function () use ($user, $amount, $reason, $idempotencyKey, $context, $actor) {
-            $wallet = $this->walletFor($user);
+        return $this->creditWallet($this->walletFor($user), $amount, $reason, $idempotencyKey, $context, $actor);
+    }
+
+    /**
+     * Credit GamePek's own wallet -- e.g. a customer's paid damage.
+     *
+     * An idempotency key is REQUIRED here: GamePek receipts are always tied to
+     * a source record, so a replay must never be able to credit twice.
+     */
+    public function creditGamePek(
+        int $amount,
+        string $reason,
+        string $idempotencyKey,
+        array $context = [],
+        ?User $actor = null,
+    ): WalletTransaction {
+        $this->assertPositiveAmount($amount);
+
+        return $this->creditWallet($this->gamePekWallet(), $amount, $reason, $idempotencyKey, $context, $actor);
+    }
+
+    /**
+     * GamePek's system wallet, created on first use. Held by a purpose, not a
+     * user; unique(purpose) makes a concurrent first use produce one wallet.
+     */
+    public function gamePekWallet(): Wallet
+    {
+        $existing = Wallet::where('purpose', Wallet::PURPOSE_GAMEPEK)->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $wallet = new Wallet;
+        $wallet->user_id = null;
+        $wallet->purpose = Wallet::PURPOSE_GAMEPEK;
+        $wallet->balance = 0;
+
+        try {
+            $wallet->save();
+        } catch (QueryException $e) {
+            if (($e->errorInfo[1] ?? null) === 1062) {
+                return Wallet::where('purpose', Wallet::PURPOSE_GAMEPEK)->firstOrFail();
+            }
+
+            throw $e;
+        }
+
+        return $wallet;
+    }
+
+    private function creditWallet(
+        Wallet $wallet,
+        int $amount,
+        string $reason,
+        ?string $idempotencyKey,
+        array $context,
+        ?User $actor,
+    ): WalletTransaction {
+        return DB::transaction(function () use ($wallet, $amount, $reason, $idempotencyKey, $context, $actor) {
             $locked = Wallet::where('id', $wallet->id)->lockForUpdate()->first();
 
             if ($idempotencyKey !== null) {

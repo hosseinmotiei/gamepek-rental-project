@@ -142,8 +142,13 @@
                 <form method="POST" action="{{ route('admin.rental-applications.damage-payment.store', $application) }}" class="flex gap-2" data-confirm="پرداخت خسارت توسط مشتری ثبت شود؟">@csrf
                     <input name="payment_reference" required maxlength="100" placeholder="شناسه پرداخت" dir="ltr" class="border border-gray-200 rounded-xl px-3 py-2 text-xs">
                     <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">ثبت پرداخت خسارت</button></form>
-                <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.transfer', $application) }}" data-confirm="مشتری خسارت را پرداخت نکرده است؛ سفته به مالک تحویل شود؟">@csrf
-                    <button class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-4 py-2 rounded-xl">تحویل سفته به مالک</button></form>
+                @if ($application->reservation?->device?->isOwnedByGamePek())
+                    <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.retain', $application) }}" data-confirm="مشتری خسارت را پرداخت نکرده است؛ سفته نزد گیم‌پک بماند؟">@csrf
+                        <button class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-4 py-2 rounded-xl">نگهداری سفته نزد گیم‌پک</button></form>
+                @else
+                    <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.transfer', $application) }}" data-confirm="مشتری خسارت را پرداخت نکرده است؛ سفته به مالک تحویل شود؟">@csrf
+                        <button class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-4 py-2 rounded-xl">تحویل سفته به مالک</button></form>
+                @endif
             @endif
             @if ($noteStatus === App\Enums\GuaranteeNoteStatus::HeldByGamePek && in_array($damageStatus['status'], ['no_damage', 'paid'], true))
                 <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.return', $application) }}" data-confirm="سفته به مشتری بازگردانده شود؟">@csrf
@@ -231,7 +236,7 @@
                         </li>
                     @endforeach
                 </ul>
-                <p class="text-[11px] text-gray-400 mt-3 leading-6">ثبت شده است؛ از کسی دریافت یا از ودیعه کسر نشده است.</p>
+                <p class="text-[11px] text-gray-400 mt-3 leading-6">مبلغ پرداخت‌شده خسارت به کیف پول گیم‌پک واریز می‌شود و در تسویه مالک اثری ندارد.</p>
             </x-admin.panel>
         @endif
     </div>
@@ -251,8 +256,10 @@
             <div><dt class="text-xs text-gray-400">وضعیت</dt><dd><x-admin.status-badge color="gray" :label="$reservation->state->value" /></dd></div>
             <div><dt class="text-xs text-gray-400">اجاره‌بها</dt><dd class="text-gray-700">{{ persian_number(number_format($reservation->rental_total)) }} تومان</dd></div>
             <div><dt class="text-xs text-gray-400">پرداختی</dt><dd class="font-bold text-gray-800">{{ persian_number(number_format($reservation->payable_now)) }} تومان</dd></div>
-            {{-- Deposit is blocked, never charged — it is not part of payable_now. --}}
-            <div><dt class="text-xs text-gray-400">ودیعه (دریافت نشده؛ قاعده تعیین نشده)</dt><dd class="text-gray-700">{{ persian_number(number_format($reservation->deposit_amount)) }} تومان</dd></div>
+            {{-- No cash deposit exists (confirmed). The product's legacy
+                 "deposit" figure is shown for staff only; it is never
+                 collected, paid or settled, and its meaning is undecided. --}}
+            <div><dt class="text-xs text-gray-400">رقم «ودیعه» محصول (دریافت نمی‌شود؛ معنای آن تعیین نشده)</dt><dd class="text-gray-700">{{ persian_number(number_format($reservation->deposit_amount)) }} تومان</dd></div>
         </dl>
     @endif
 </x-admin.panel>

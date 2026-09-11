@@ -2,6 +2,7 @@
 
 namespace App\Services\Rental;
 
+use App\Enums\RentalApplicationState;
 use App\Enums\RentalInspectionStage;
 use App\Models\GuaranteeNoteEvent;
 use App\Models\RentalApplication;
@@ -9,8 +10,10 @@ use App\Models\RentalDamageAssessment;
 use App\Models\RentalDamagePayment;
 use App\Models\RentalInspection;
 use App\Models\RentalOperation;
+use App\Models\RentalReservation;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Wallet\WalletService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -26,8 +29,11 @@ use Illuminate\Support\Facades\DB;
  * Revising stops once the damage is paid or the note has been resolved, so a
  * paid or transferred obligation can never be silently re-priced.
  *
- * NOT DONE HERE: no formula, no category, no gateway, no wallet movement --
- * where a damage payment's money goes is not decided.
+ * CONFIRMED since: a paid damage is credited IN FULL to GamePek's wallet
+ * (WalletService::creditGamePek), separate from the owner's 35/65 settlement.
+ * Staff decide whether the customer paid; there is no deadline.
+ *
+ * NOT DONE HERE: no formula, no category, no gateway integration.
  */
 class RentalDamageAssessmentService
 {
@@ -38,6 +44,8 @@ class RentalDamageAssessmentService
     public const UNPAID = 'unpaid';
 
     public const PAID = 'paid';
+
+    public function __construct(private WalletService $wallets) {}
 
     /**
      * @throws \RuntimeException with a Persian message
@@ -133,6 +141,18 @@ class RentalDamageAssessmentService
                 return $existing;
             }
 
+            if (RentalApplication::whereKey($application->id)->firstOrFail(['id', 'state'])->state !== RentalApplicationState::Returned) {
+                throw new \RuntimeException('خسارت فقط برای اجاره‌ای که دستگاه آن بازگشته است پرداخت می‌شود.');
+            }
+
+            $reservation = RentalReservation::where('rental_application_id', $application->id)->first();
+
+            if ($reservation === null
+                || $current->rental_reservation_id !== $reservation->id
+                || $current->device_id !== $reservation->device_id) {
+                throw new \RuntimeException('ارتباط ارزیابی خسارت با اجاره یا دستگاه آن معتبر نیست.');
+            }
+
             if ($current->amount === 0) {
                 throw new \RuntimeException('برای این اجاره خسارتی تعیین نشده است که پرداخت شود.');
             }
@@ -141,10 +161,27 @@ class RentalDamageAssessmentService
                 throw new \RuntimeException('سفته این اجاره تعیین تکلیف شده است و پرداخت خسارت دیگر از طریق گیم‌پک ثبت نمی‌شود.');
             }
 
+            // CONFIRMED: paid damage is GamePek's receipt, credited to the
+            // GamePek wallet in full -- never split 35/65, never touching the
+            // owner's settlement. The key is derived from the assessment, so
+            // a replay can never credit twice.
+            $entry = $this->wallets->creditGamePek(
+                $current->amount,
+                'rental_damage_payment',
+                'damage:'.$current->id.':gamepek',
+                [
+                    'rental_application_id' => $application->id,
+                    'rental_damage_assessment_id' => $current->id,
+                    'payment_reference' => mb_substr($paymentReference, 0, 100),
+                ],
+                $actor,
+            );
+
             $payment = new RentalDamagePayment;
             $payment->rental_damage_assessment_id = $current->id;
             $payment->rental_application_id = $application->id;
             $payment->amount = $current->amount;
+            $payment->wallet_transaction_id = $entry->id;
             $payment->payment_reference = mb_substr($paymentReference, 0, 100);
             $payment->recorded_by_user_id = $actor->id;
             $payment->paid_at = now();

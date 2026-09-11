@@ -27,9 +27,23 @@ class Wallet extends Model
         ];
     }
 
+    /** The system wallet that receives GamePek's own money (e.g. paid damage). */
+    public const PURPOSE_GAMEPEK = 'gamepek';
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function isGamePek(): bool
+    {
+        return $this->purpose === self::PURPOSE_GAMEPEK;
+    }
+
+    /** Persian holder name for screens: the user, or GamePek itself. */
+    public function holderLabel(): string
+    {
+        return $this->isGamePek() ? 'کیف پول گیم‌پک' : ($this->user?->full_name ?: '—');
     }
 
     public function transactions(): HasMany

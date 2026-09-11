@@ -36,7 +36,7 @@
             @foreach($wallets as $wallet)
             <tr class="hover:bg-gray-50 transition-colors">
                 <td class="px-4 py-3">
-                    <p class="font-medium text-gray-800 text-sm">{{ $wallet->user?->full_name ?: '—' }}</p>
+                    <p class="font-medium text-gray-800 text-sm">{{ $wallet->holderLabel() }}</p>
                 </td>
                 <td class="px-4 py-3 hidden md:table-cell">
                     <span class="text-sm font-mono text-gray-700" dir="ltr">{{ $wallet->user?->mobile }}</span>

@@ -61,7 +61,7 @@ class RentalApplicationController extends Controller
         abort_if(! auth()->user()->can('view_rental_applications'), 403);
 
         $rentalApplication->load([
-            'user.identity', 'order', 'reservation.product', 'reservation.settlement.credit',
+            'user.identity', 'order', 'reservation.product', 'reservation.device', 'reservation.settlement.credit',
             'guarantee.inquiries', 'contract.signatures', 'transitions',
             'damageAssessments.assessor',
         ]);
@@ -92,6 +92,12 @@ class RentalApplicationController extends Controller
     public function returnNote(Request $request, RentalApplication $rentalApplication, GuaranteeNoteService $notes): RedirectResponse
     {
         return $this->closeoutAction($request, fn () => $notes->returnToCustomer($rentalApplication, $request->user(), $this->noteText($request)), 'بازگرداندن سفته به مشتری ثبت شد.');
+    }
+
+    /** GamePek-owned device, unpaid damage: the note stays with GamePek. */
+    public function retainNote(Request $request, RentalApplication $rentalApplication, GuaranteeNoteService $notes): RedirectResponse
+    {
+        return $this->closeoutAction($request, fn () => $notes->retainByGamePek($rentalApplication, $request->user(), $this->noteText($request)), 'نگهداری سفته نزد گیم‌پک ثبت شد.');
     }
 
     /** Unpaid damage: note handed to the loss-bearing owner. */

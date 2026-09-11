@@ -118,6 +118,11 @@ Anything not listed in §1 is either in §4 (policy gate) or is not decided.
 | C-45 | No damage → the note is **returned to the customer** |
 | C-46 | Damage → the customer may **pay the assessed amount directly**; if paid, the note is returned |
 | C-47 | Damage not paid → the note is **handed to the loss-bearing owner**, who pursues it through the competent authorities. GamePek does not collect or prosecute it |
+| C-48 | Settlement is **manual** for now (staff finalization); no scheduled or daily job |
+| C-49 | The customer pays the **full rental amount** before the reservation exists; there is **no cash deposit** |
+| C-50 | A paid damage goes **in full to the GamePek Wallet**; it is not split 35/65 and does not change the owner's settlement |
+| C-51 | GamePek-owned device with unpaid damage → there is no owner; the note **stays with GamePek** (no legal workflow) |
+| C-52 | Rental cancelled after the note was received → the note **stays held** by GamePek; no automatic return or transfer until a policy is defined |
 
 > **Implemented** (see `docs/operations/OPERATIONS_AND_CUSTODY.md` §13–§14):
 > C-31, C-32, C-34, C-37, C-40 and the C-38 window's arithmetic, i.e. all four

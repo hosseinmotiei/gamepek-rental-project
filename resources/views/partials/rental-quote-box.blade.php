@@ -48,18 +48,12 @@
         </div>
 
         <div class="flex items-center justify-between">
-            <dt class="text-gray-500">ودیعه</dt>
-            <dd class="text-gray-600"><span data-quote="deposit">{{ persian_number($rentalQuote->deposit) }}</span></dd>
+            <dt class="text-gray-500">ضمانت</dt>
+            <dd class="text-gray-600">سفته فیزیکی</dd>
         </div>
     </dl>
 </div>
 
-@unless($rental->isRentable())
-<div class="flex items-center justify-between text-xs mb-4">
-    <span class="text-gray-500">ودیعه</span>
-    <span class="text-gray-600">{{ persian_number($rental->deposit()) }}</span>
-</div>
-@endunless
 
 @if($rental->isRentable())
 <button type="button"
@@ -69,7 +63,7 @@
 {{-- No delivery/return workflow exists yet, so this must not promise a
      collection or refund timeline -- only that nothing is charged now,
      which the reservation flow already guarantees (C-15/C-16). --}}
-<p class="mt-2 text-[10px] text-gray-400 text-center">ودیعه در این مرحله دریافت نمی‌شود.</p>
+<p class="mt-2 text-[10px] text-gray-400 text-center">مبلغ کامل اجاره پرداخت می‌شود؛ ضمانت با سفته است و ودیعه نقدی ندارد.</p>
 {{-- Online reservation is live: the CTA opens an application and reserves
      into it (see rental-panel.blade.php). --}}
 @else

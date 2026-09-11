@@ -197,10 +197,8 @@
                     </span>
                 </div>
                 <div class="flex items-center justify-between">
-                    <span class="text-gray-500">ودیعه (در این مرحله دریافت نمی‌شود)</span>
-                    <span class="font-bold text-gray-700">
-                        {{ number_format($reservation->deposit_amount) }} تومان
-                    </span>
+                    <span class="text-gray-500">ضمانت</span>
+                    <span class="font-bold text-gray-700">سفته فیزیکی (بدون ودیعه نقدی)</span>
                 </div>
             </div>
         @else
@@ -272,8 +270,8 @@
 
                                 @case('payment')
                                     <p class="text-xs text-gray-500 mb-3">
-                                        مبلغ {{ number_format($reservation?->payable_now ?? 0) }} تومان پرداخت می‌شود.
-                                        ودیعه در این مرحله دریافت نمی‌شود.
+                                        مبلغ کامل اجاره ({{ number_format($reservation?->payable_now ?? 0) }} تومان) پرداخت می‌شود.
+                                        ضمانت با سفته فیزیکی است و ودیعه نقدی دریافت نمی‌شود.
                                     </p>
                                     <form method="POST" action="{{ route('rental.applications.pay', $application) }}" data-loading-label="در حال انتقال…">
                                         @csrf
@@ -485,7 +483,8 @@
     {{-- ─── Guarantee note and damage: the customer's own position ────────
          Only facts about their obligation: the assessed amount, whether it
          is paid, and where their promissory note is. No expert notes. --}}
-    @if (in_array($application->state, [RentalApplicationState::Returned, RentalApplicationState::Closed], true))
+    @if (in_array($application->state, [RentalApplicationState::Returned, RentalApplicationState::Closed], true)
+        || $noteStatus !== \App\Enums\GuaranteeNoteStatus::NotReceived)
         <section class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-5">
             <header class="px-5 py-4 border-b border-gray-100">
                 <h2 class="text-sm md:text-base font-bold text-gray-800 flex items-center gap-2">
@@ -494,6 +493,10 @@
                 </h2>
             </header>
             <div class="p-5 space-y-3 text-xs md:text-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <span class="text-gray-500">پرداخت اجاره</span>
+                    <span class="font-bold text-gray-800">{{ $application->order?->payment_status === 'paid' ? 'مبلغ کامل پرداخت شده است' : 'پرداخت نشده' }}</span>
+                </div>
                 <div class="flex items-center justify-between gap-3">
                     <span class="text-gray-500">وضعیت بررسی خسارت</span>
                     <span class="font-bold text-gray-800">{{ \App\Services\Rental\RentalDamageAssessmentService::statusLabel($damageStatus) }}</span>

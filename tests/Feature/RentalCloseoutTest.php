@@ -225,9 +225,10 @@ class RentalCloseoutTest extends TestCase
         $this->assertSame(300_000, $payment->amount);
         $this->assertSame(GuaranteeNoteEvent::BASIS_DAMAGE_PAID,
             GuaranteeNoteEvent::where('event', GuaranteeNoteEvent::RETURNED_TO_CUSTOMER)->value('basis'));
-        // Damage money is paid directly: it credits no wallet. Only the
-        // owner's settlement share moved.
-        $this->assertSame(1, WalletTransaction::count());
+        // Confirmed since: paid damage is credited in full to the GamePek
+        // wallet, separately from the owner's settlement share.
+        $this->assertSame(2, WalletTransaction::count());
+        $this->assertSame(300_000, (int) Wallet::where('purpose', Wallet::PURPOSE_GAMEPEK)->value('balance'));
         $this->assertSame(SettlementSplit::of((int) $reservation->rental_total)->ownerShare, $this->ownerWalletBalance($device));
         $this->assertClosedOnce($application);
         $this->assertSame([], app(OperationCustodyReconciler::class)->findings()->all());
