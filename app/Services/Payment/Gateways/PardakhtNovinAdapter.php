@@ -24,7 +24,18 @@ use App\Services\Payment\Dto\GatewayVerification;
  */
 class PardakhtNovinAdapter implements PaymentGatewayInterface
 {
+    private const NOT_CONFIGURED_MESSAGE = 'درگاه پرداخت پیکربندی نشده است. لطفاً با پشتیبانی تماس بگیرید.';
+
     public function __construct(private PardakhtNovinGateway $gateway) {}
+
+    /**
+     * The one credential the documented protocol requires in every request.
+     * Read from config, never logged or echoed; only its presence is checked.
+     */
+    private function isConfigured(): bool
+    {
+        return trim((string) config('rental.payment.pardakhtnovin.corporation_pin')) !== '';
+    }
 
     public function key(): string
     {
@@ -33,6 +44,13 @@ class PardakhtNovinAdapter implements PaymentGatewayInterface
 
     public function request(PaymentTransaction $transaction, string $callbackUrl): GatewayRequestResult
     {
+        // FAIL CLOSED on missing credentials. Without this the wire class
+        // would POST to the live bank endpoint with `CorporationPin: null` --
+        // a real network call on a configuration that cannot possibly succeed.
+        if (! $this->isConfigured()) {
+            return new GatewayRequestResult(success: false, message: self::NOT_CONFIGURED_MESSAGE);
+        }
+
         // Every amount in this codebase is Toman; Pardakht Novin is a
         // Shaparak-connected switch and expects Rial. Sending the raw Toman
         // value undercharges by exactly 10x.
@@ -75,7 +93,33 @@ class PardakhtNovinAdapter implements PaymentGatewayInterface
 
     public function verify(PaymentTransaction $transaction): GatewayVerification
     {
+        // Credentials removed after the customer paid: the payment may be real,
+        // so this is not a refusal of it. Unknown keeps the row pending and
+        // reconciliation can settle it once the configuration is restored.
+        if (! $this->isConfigured()) {
+            return new GatewayVerification(
+                state: PaymentVerificationState::Unknown,
+                statusCode: 'GATEWAY_NOT_CONFIGURED',
+                message: self::NOT_CONFIGURED_MESSAGE,
+            );
+        }
+
         $result = $this->gateway->confirm((string) $transaction->authority);
+
+        // A timeout, a dropped connection or a response with no Status is
+        // "the gateway could not tell us" -- NOT "the customer did not pay".
+        // The bank may already have taken the money, so marking the row failed
+        // here would strand a real payment (a failed row can never be settled
+        // again). Unknown leaves it pending for reconciliation to retry: the
+        // exact meaning PaymentService gives that state.
+        if (($result['status'] ?? null) === null) {
+            return new GatewayVerification(
+                state: PaymentVerificationState::Unknown,
+                statusCode: 'NO_RESPONSE',
+                message: 'پاسخی از درگاه پرداخت دریافت نشد. وضعیت پرداخت بعداً بررسی می‌شود.',
+                raw: $result['raw'] ?? [],
+            );
+        }
 
         if (! $result['success']) {
             return new GatewayVerification(
@@ -119,6 +163,10 @@ class PardakhtNovinAdapter implements PaymentGatewayInterface
 
     public function refund(PaymentTransaction $transaction, ?int $amountRial = null): GatewayRefund
     {
+        if (! $this->isConfigured()) {
+            return new GatewayRefund(success: false, message: self::NOT_CONFIGURED_MESSAGE);
+        }
+
         // Reverse is all-or-nothing in the doc; a partial amount cannot be
         // expressed, so $amountRial is deliberately ignored here.
         $result = $this->gateway->reverse((string) $transaction->authority);

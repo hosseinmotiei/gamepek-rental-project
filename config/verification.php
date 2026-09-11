@@ -228,7 +228,11 @@ return [
     | provider, so production fails loudly rather than pretending to send.
     */
     'sms' => array_replace_recursive($defaults, [
-        'driver' => env('SMS_DRIVER', env('APP_ENV') === 'production' ? 'unconfigured' : 'log'),
+        // The log driver sends nothing; it is a developer convenience. It is the
+        // default ONLY in local/testing -- a staging or any other environment
+        // with no SMS_DRIVER set gets `unconfigured`, which fails every send
+        // honestly instead of recording a message as sent that never left.
+        'driver' => env('SMS_DRIVER', in_array(env('APP_ENV'), ['local', 'testing'], true) ? 'log' : 'unconfigured'),
         'environment' => env('SMS_ENV', 'sandbox'),
         'base_url' => env('SMS_BASE_URL'),
         'credentials' => [

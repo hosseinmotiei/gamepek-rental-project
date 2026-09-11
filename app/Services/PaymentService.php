@@ -114,7 +114,15 @@ class PaymentService
         $adapter = $this->gateways->for($gateway);
         $callback = $adapter->parseCallback($params);
 
-        Log::info('Payment callback received', ['gateway' => $adapter->key(), 'params' => $params]);
+        // NEVER the raw params. A real gateway callback can carry a masked card
+        // number, a bank reference or a session token, and this is an INFO line
+        // that ships to every log sink. The names of the fields that arrived are
+        // enough to debug a malformed callback; their values are not needed.
+        Log::info('Payment callback received', [
+            'gateway' => $adapter->key(),
+            'has_authority' => ! empty($callback->authority),
+            'fields' => array_slice(array_map('strval', array_keys($params)), 0, 20),
+        ]);
 
         if (empty($callback->authority)) {
             Log::warning('Payment callback malformed: no authority', ['gateway' => $adapter->key()]);

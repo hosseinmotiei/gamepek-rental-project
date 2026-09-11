@@ -89,7 +89,15 @@ class IntegrationServiceProvider extends ServiceProvider
     private function bindSms(): void
     {
         $this->app->bind(SmsSenderInterface::class, function () {
-            $driver = config('verification.sms.driver', app()->isProduction() ? 'unconfigured' : 'log');
+            $driver = config('verification.sms.driver', $this->app->environment(['local', 'testing']) ? 'log' : 'unconfigured');
+
+            // The log driver records a message as sent without sending it. It
+            // must never be what answers outside local/testing, whatever the
+            // environment variable says.
+            if ($driver === 'log' && ! $this->app->environment(['local', 'testing'])) {
+                $driver = 'unconfigured';
+            }
+
             $class = $this->resolveAdapterClass('sms', $driver);
 
             return new $class;

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\Audit\AuditLogger;
 use App\Services\Notification\Contracts\SmsSenderInterface;
 use App\Services\Providers\ProviderException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -27,8 +28,20 @@ class SmsService
      * Queue a templated message. Returns null when no template is configured
      * for the key -- silence is the correct behaviour, not an invented message.
      */
-    public function send(string $templateKey, string $mobile, array $params = [], ?User $user = null): ?SmsMessage
+    /**
+     * @param  string|null  $dedupeKey  the event this message is for (e.g.
+     *                                  `transition:42`). When given, a second
+     *                                  send for the same event returns the
+     *                                  first message and sends nothing -- the
+     *                                  unique index on sms_messages makes that
+     *                                  hold even under a race.
+     */
+    public function send(string $templateKey, string $mobile, array $params = [], ?User $user = null, ?string $dedupeKey = null): ?SmsMessage
     {
+        if ($dedupeKey !== null && ($existing = SmsMessage::where('dedupe_key', $dedupeKey)->first())) {
+            return $existing;
+        }
+
         $template = config('rental.sms.templates.'.$templateKey);
 
         if (! $template) {
@@ -45,17 +58,27 @@ class SmsService
 
         $body = $this->render($template, $params);
 
-        $message = SmsMessage::create([
-            'user_id' => $user?->id,
-            'mobile' => $mobile,
-            'template_key' => $templateKey,
-            'params' => $params,
-            'body' => $body,
-            'provider' => $this->sender->key(),
-            'state' => SmsState::Queued,
-            'queued_at' => now(),
-            'correlation_id' => AuditLogger::correlationId(),
-        ]);
+        try {
+            $message = SmsMessage::create([
+                'user_id' => $user?->id,
+                'mobile' => $mobile,
+                'template_key' => $templateKey,
+                'dedupe_key' => $dedupeKey,
+                'params' => $params,
+                'body' => $body,
+                'provider' => $this->sender->key(),
+                'state' => SmsState::Queued,
+                'queued_at' => now(),
+                'correlation_id' => AuditLogger::correlationId(),
+            ]);
+        } catch (QueryException $e) {
+            // The concurrent twin won the unique index: that message is the one.
+            if ($dedupeKey !== null && ($e->errorInfo[1] ?? null) === 1062) {
+                return SmsMessage::where('dedupe_key', $dedupeKey)->firstOrFail();
+            }
+
+            throw $e;
+        }
 
         return $this->dispatch($message);
     }
@@ -83,6 +106,21 @@ class SmsService
             ]);
 
             Log::warning('SMS send failed', ['sms_message_id' => $message->id, 'error' => $e->getMessage()]);
+
+            return $message->refresh();
+        } catch (\Throwable $e) {
+            // Anything else a sender throws -- a timeout, a TLS error, a bug in
+            // an adapter -- would otherwise leave the row stuck in `sending`
+            // forever, invisible to retryFailed(). Record the failure honestly.
+            // Only the exception CLASS is stored: an unexpected exception's
+            // message can carry a request URL or payload fragment.
+            $message->update([
+                'state' => SmsState::Failed,
+                'last_error' => 'unexpected: '.$e::class,
+                'failed_at' => now(),
+            ]);
+
+            report($e);
 
             return $message->refresh();
         }

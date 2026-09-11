@@ -173,6 +173,11 @@ return [
 
         // Chain transition => template key. Also empty, for the same reason:
         // no SMS fires on any state change until the copy exists.
+        //
+        // Shape: target state VALUE => template key, e.g. 'active' => 'rental_active'.
+        // Wired by App\Services\Notification\RentalLifecycleNotifier: sent after
+        // the transition commits, at most once per transition (dedupe key), and
+        // a provider failure never touches the rental.
         'state_templates' => [],
     ],
 

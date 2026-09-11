@@ -35,7 +35,7 @@ matrix and a manual test scenario. Path-scoped rules live in
 A complete, audited, state-machine-driven **rental chain exists and works**:
 reservations, identity/bank/guarantee verification, payment, contract
 generation, signing, and admin approval are all implemented, and the
-repository has a **Feature suite of 606 test methods**.
+repository has a **Feature suite of 625 test methods**.
 
 | Area | Status |
 |---|---|
@@ -52,9 +52,9 @@ repository has a **Feature suite of 606 test methods**.
 | Owner / lessor domain | Implemented — owners, mixed fleet, serials, admin review |
 | Operational task domain | Implemented — owner pickup, customer delivery, customer return, owner return |
 | Device custody history (owner -> GamePek) | Implemented — custody is separate from ownership |
-| Live payment gateway | Not implemented — no credentials |
+| Live payment gateway | Adapter exists (Pardakht Novin); **no credentials**. Fails closed with no network call when the PIN is missing; a dropped Confirm call is `Unknown` (row stays pending, retryable), never a failed payment. Mock refused outside local/testing |
 | Live KYC / bank / cheque providers | Not implemented — none chosen |
-| Rental SMS notifications | Not implemented — no approved copy (B13) |
+| Rental SMS notifications | **Wired, silent by design** — `RentalLifecycleNotifier` sends after a transition commits, once per transition (`sms_messages.dedupe_key`), and a provider failure never touches the rental. Sends nothing until approved copy exists (B13, `rental.sms.templates`/`state_templates` empty) **and** a provider is supplied. The `log` driver is refused outside local/testing and never claims delivery (docs/operations/OPERATIONS_AND_CUSTODY.md §21) |
 | Wallet backend (`WalletService`, persisted balance + immutable ledger) | Implemented — and used: the owner's settlement share and paid damage are credited through it |
 | Wallet-driven settlement and damage receipts | **Implemented** — owner share to the owner's wallet (`finalize()`), paid damage in full to the GamePek system wallet (`recordPayment()`) |
 | Wallet-driven payout, deposit, refund | **Not implemented** — there is no deposit (C-49) and no payout-out rule; nothing debits a wallet in the rental flow |
@@ -733,7 +733,7 @@ Note: `docs/rental-flow-fa.md` describes the **architecture as built**, which in
 several places differs from confirmed business policy (reservation ordering,
 KYC gating, device units). Its header now carries that warning and links to the
 confirmed-decisions document. Its test counts are kept in step with the
-verified Feature run (`606 tests, 2860 assertions`).
+verified Feature run (`625 tests, 2920 assertions`).
 
 ---
 

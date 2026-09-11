@@ -803,6 +803,72 @@ disagreement, and no date invented for it); damage money taken after the note
 went to the owner; any wallet entry claiming to be a late fee, which no
 confirmed rule authorises.
 
+## 21. Payment and SMS integration boundary
+
+### 21.1 Payment -- what was already right
+
+The flow was sound before this batch and was not rebuilt: an order is marked
+paid ONLY on the gateway's server-to-server `verify()`, under a row lock, with
+an amount cross-check; callback query parameters locate the transaction and
+decide nothing; replays return early; the reservation is materialised after the
+payment commits, under a product lock, idempotently; mock is structurally
+unreachable outside local/testing; the payment gate (KYC + bank) is server-side.
+
+### 21.2 Payment -- gaps closed
+
+- **Callback logging.** The callback's raw parameters were logged at INFO. A
+  real gateway callback can carry a masked card number, a bank reference or a
+  session token. Only the gateway, whether an authority arrived, and the field
+  NAMES are logged now.
+- **Missing credentials.** With no Corporation PIN, the Pardakht Novin adapter
+  POSTed to the live bank endpoint with a null PIN. It now refuses before any
+  network call (request, refund) and answers `Unknown` on verify, so a payment
+  taken before the configuration was lost stays pending and settleable.
+- **A dropped Confirm call.** A timeout or transport error was reported as
+  "verified, not paid", which marked the transaction failed -- although the bank
+  may already have taken the money, and a failed row can never be settled
+  again. It is now `Unknown`: the row stays pending for reconciliation, which is
+  exactly the meaning PaymentService gives that state. A genuine decline (a
+  non-null status code) is still a failed payment.
+
+### 21.3 SMS
+
+`config('rental.sms.state_templates')` was declared but nothing dispatched it.
+`App\Services\Notification\RentalLifecycleNotifier` now does, hooked on the one
+record every committed state change writes (a `rental_application_transitions`
+row), so the orchestrator stays the sole state writer and knows nothing of SMS.
+
+- sent **after commit**: a rolled-back change never announces itself;
+- **isolated**: any sender failure is caught, recorded (exception class only --
+  a message can carry a URL or key) and swallowed; the rental, custody,
+  reservation, wallet and settlement are untouched;
+- **once**: keyed `transition:{id}` with a unique index on
+  `sms_messages.dedupe_key`; retrying a failed message re-dispatches its row;
+- **silent** while the map is empty -- which it is, because no customer copy is
+  approved (B13). No Persian message text was written in this batch.
+
+The `log` driver was the default in every non-production environment and
+reported messages as DELIVERED. It is now the default only in local/testing, is
+refused anywhere else even if configured, masks the mobile in its log line, and
+answers `unknown` to a delivery check. `SmsService::dispatch()` previously
+caught only `ProviderException`; anything else left the row stuck in `sending`,
+invisible to the retry sweep. It is now marked failed.
+
+### 21.4 Ready but blocked
+
+- **Real payment provider:** the adapter implements Pardakht Novin's documented
+  NormalSale / Confirm / Reverse. Blocked on merchant credentials, and on an
+  inquiry operation (the doc has none, so `status()` stays `Unknown`) and a
+  callback field table (the doc gives none; `Token` is inferred from the
+  consistent naming of every documented operation).
+- **SMS provider:** no provider chosen, so no adapter exists. The boundary
+  (`SmsSenderInterface`, `sms_messages`, retry sweep, delivery sync, dedupe) is
+  ready for one.
+- **SMS copy:** every template and the state map stay empty until the owner
+  approves customer-facing text (B13).
+- **Damage payment** stays a staff-recorded external payment; no customer
+  gateway flow was built.
+
 ## 20. The lifecycle rungs verify their own evidence
 
 `RentalChainOrchestrator::transitionPostApproval()` used to move a rental on

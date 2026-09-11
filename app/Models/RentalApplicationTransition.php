@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Notification\RentalLifecycleNotifier;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -9,6 +10,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class RentalApplicationTransition extends Model
 {
     public $timestamps = false;
+
+    /**
+     * Every committed state change is exactly one row here, which makes this
+     * the right hook for lifecycle notifications: RentalChainOrchestrator stays
+     * the sole writer of state and knows nothing about SMS. The notifier defers
+     * to after the commit and can never throw back into it.
+     */
+    protected static function booted(): void
+    {
+        static::created(fn (self $transition) => app(RentalLifecycleNotifier::class)->transitionRecorded($transition));
+    }
 
     protected $fillable = [
         'rental_application_id', 'from_state', 'to_state', 'reason',
