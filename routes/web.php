@@ -452,6 +452,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // The final leg: a returned owner's console goes back to them.
             // Changes no application state.
             Route::post('/{rentalApplication}/owner-return', [AdminOperationController::class, 'openOwnerReturn'])->name('owner-return.open');
+            // Records the 35/65 calculation only. Moves no money.
+            Route::post('/{rentalApplication}/settlement', [AdminRentalApplicationController::class, 'calculateSettlement'])->name('settlement.calculate');
         });
 
         Route::get('/audit-events', [AdminAuditEventController::class, 'index'])->name('audit-events.index');
@@ -488,6 +490,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // Read-only drift report. Declared before the wildcard so
             // "reconciliation" is never captured as an operation id.
             Route::get('/reconciliation', [AdminOperationController::class, 'reconciliation'])->name('reconciliation');
+            // An expert's damage amount on a return inspection. Charges nobody.
+            Route::post('/inspections/{inspection}/damage-assessments', [AdminOperationController::class, 'recordDamageAssessment'])
+                ->name('inspections.damage.store');
             Route::get('/{operation}', [AdminOperationController::class, 'show'])->name('show');
             Route::post('/{operation}/device', [AdminOperationController::class, 'attachDevice'])->name('device');
             Route::post('/{operation}/schedule', [AdminOperationController::class, 'schedule'])->name('schedule');

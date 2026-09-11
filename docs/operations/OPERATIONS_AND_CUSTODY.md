@@ -542,6 +542,62 @@ anything that follows the window closing, whether the boundary instant counts
 as inside the window, owner acceptance/signature wording for the return,
 closure, reservation release after an early return, deposit, settlement.
 
+## 15. Finance, damage and closure foundations
+
+### 15.1 Confirmed rules implemented
+
+| Rule | Where it lives |
+|---|---|
+| GamePek 35% / owner 65% (C-26/C-27) | `App\Support\Rental\SettlementSplit` -- integer Toman; shares always sum to the gross |
+| The expert determines the damage amount (C-39) | `rental_damage_assessments`, entered manually against a **return** inspection by staff with `manage_operations` |
+| Returned does not close by itself | `RentalClosureReadiness` reports; nothing closes |
+
+### 15.2 Technical foundations (not decisions)
+
+- **Settlement calculation.** `RentalSettlementService::calculate()` records
+  one immutable `rental_settlements` row per returned owner rental
+  (unique per reservation; CHECK that the shares add up; status is only ever
+  `calculated`). It **refuses and audits `settlement.policy_undefined`
+  while `rental.settlement.gross_basis` is null** -- the base amount is not
+  decided. The only computable basis is `rental_total` (daily rate x days +
+  extras - discount; excludes delivery fee and deposit). No money moves.
+  `preview()` shows the would-be split read-only. Admin action requires
+  `manage_rental_applications`.
+- **Rounding** is a technical choice flagged for confirmation: GamePek's
+  share is rounded down, the owner gets the remainder (at most 1 Toman).
+- **Future wallet integration point:** credit `owner_share` with idempotency
+  key `settlement:{reference_number}:owner` and the settlement's
+  correlation id; `WalletService`'s unique index then makes a replayed payout
+  run harmless.
+- **Damage assessment** rows are append-only (revisions are new rows), with
+  references derived from the inspection and cross-checked against its
+  operation. No category, formula, responsibility or charge exists.
+- **Closure readiness** (`RentalClosureReadiness`) reports each prerequisite
+  as satisfied / missing / not applicable / policy undefined: customer
+  return, return inspection, owner's 2-hour window, owner return, damage
+  assessment, settlement calculation, deposit (B4), evidence retention
+  (B11), closure trigger (B14). `ready` cannot be true while any policy item
+  is undecided. Shown on the admin application screen for Returned rentals.
+- **Visibility.** Admin sees readiness, the split (preview or calculated,
+  both labelled unpaid) and damage amounts. The owner sees only their own
+  calculated share, labelled "calculated -- not paid". Customers see none
+  of it. Owners cannot withdraw anything.
+
+### 15.3 Corrected assumptions
+
+The customer quote box called the deposit "قابل استرداد" (refundable) and
+admin/customer pages called it "بلوکه" (held). Neither is confirmed -- B4
+(deposit hold/release) is open -- so the wording now says only what is true:
+it is not collected at this stage.
+
+### 15.4 Still NOT decided
+
+Settlement gross basis, settlement trigger and daily-run mechanics, payout
+destination, deposit amount/hold/release, refunds, whether damage is charged
+and to whom, whether an assessment is required when nothing is damaged,
+anything after the owner's window closes, closure trigger, tax/invoice rules,
+GamePek-owned revenue treatment, early-return date release (§14.5).
+
 ## 12. Delivery / customer custody feasibility analysis -- superseded by §13
 
 A task requested adding the `gamepek -> customer`, `customer -> gamepek` and

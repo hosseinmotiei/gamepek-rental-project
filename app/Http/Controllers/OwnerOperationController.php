@@ -46,7 +46,7 @@ class OwnerOperationController extends Controller
     {
         $this->authorize('view', $operation);
 
-        $operation->loadMissing(['device.product', 'custodyTransfer', 'reservation']);
+        $operation->loadMissing(['device.product', 'custodyTransfer', 'reservation.settlement']);
 
         return view('owner.operations.show', compact('operation'));
     }

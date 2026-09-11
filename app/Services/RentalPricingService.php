@@ -57,7 +57,8 @@ class RentalPricingService
      * @param  bool  $withExtraController  whether the customer added that second controller
      * @param  int  $gameFee  one-off fee for a paid game title, 0 when bundled free
      * @param  int  $deliveryFee  courier fee, 0 for in-person pickup
-     * @param  int  $deposit  refundable security hold
+     * @param  int  $deposit  security deposit -- how it is held, released or
+     *                        refunded is undecided (B4); nothing here charges it
      */
     public function quote(
         int $dailyRate,

@@ -121,6 +121,31 @@ return [
         'closure_trigger' => null,
     ],
 
+    /*
+     * Owner settlement (C-26 / C-27 / C-28).
+     *
+     * CONFIRMED: GamePek keeps 35%, the owner receives 65%, settlement is
+     * intended to be daily. The split itself is fixed in
+     * App\Services\Rental\RentalSettlementService.
+     *
+     * NOT DECIDED -- so null, and the settlement service refuses (audited as
+     * settlement.policy_undefined) while it is null:
+     *
+     *   gross_basis -- WHICH amount the 35/65 applies to. The quote has a
+     *                  rental total (daily rate x days + extra-controller and
+     *                  game fees, minus the placeholder duration discount), a
+     *                  delivery fee and a deposit. Whether extras, delivery or
+     *                  discounts are inside the shared amount is an owner
+     *                  decision. The only basis the code can compute is
+     *                  'rental_total' (reservation.rental_total: excludes the
+     *                  delivery fee and the deposit).
+     *
+     * Nothing here moves money. There is no settlement trigger and no payout.
+     */
+    'settlement' => [
+        'gross_basis' => env('RENTAL_SETTLEMENT_GROSS_BASIS'),
+    ],
+
     'contract' => [
         // Which contract_templates key ContractService::generate() renders.
         'template_key' => env('RENTAL_CONTRACT_TEMPLATE_KEY', 'rental_agreement'),

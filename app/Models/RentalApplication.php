@@ -87,6 +87,12 @@ class RentalApplication extends Model
         return $this->belongsTo(Order::class);
     }
 
+    /** Expert damage assessments recorded for this rental. Staff-only. */
+    public function damageAssessments(): HasMany
+    {
+        return $this->hasMany(RentalDamageAssessment::class, 'rental_application_id');
+    }
+
     public function reservation(): HasOne
     {
         return $this->hasOne(RentalReservation::class);

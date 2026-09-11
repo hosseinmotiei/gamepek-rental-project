@@ -8,11 +8,13 @@ use App\Http\Controllers\Controller;
 use App\Models\AuditEvent;
 use App\Models\Device;
 use App\Models\RentalApplication;
+use App\Models\RentalInspection;
 use App\Models\RentalOperation;
 use App\Models\RentalReservation;
 use App\Services\Audit\AuditLogger;
 use App\Services\Rental\DeviceCustodyService;
 use App\Services\Rental\OperationCustodyReconciler;
+use App\Services\Rental\RentalDamageAssessmentService;
 use App\Services\Rental\RentalInspectionService;
 use App\Services\Rental\RentalOperationService;
 use Illuminate\Http\Request;
@@ -33,8 +35,9 @@ use Illuminate\Support\Facades\DB;
  * the service decides whether that device is allowed.
  *
  * Scope: list, view, attach a device, schedule, start, record a handover for
- * any of the four legs, record inspection evidence, mark failed. Damage
- * valuation and settlement are undecided and have no action here.
+ * any of the four legs, record inspection evidence, record an expert's damage
+ * amount (C-39; charges nobody), mark failed. Damage charging, deposits and
+ * settlement payouts are undecided and have no action here.
  */
 class OperationController extends Controller
 {
@@ -73,6 +76,7 @@ class OperationController extends Controller
             'reservation', 'assignedTo', 'completedBy',
             'custodyTransfer.fromOwner.user',
             'inspections.inspector',
+            'inspections.damageAssessments.assessor',
         ]);
 
         // Candidate devices for an unallocated task. This is a LIST for a human
@@ -364,6 +368,43 @@ class OperationController extends Controller
         }
 
         return back()->with('success', 'بازرسی دستگاه ثبت شد.');
+    }
+
+    /**
+     * Record a GamePek expert's damage amount against a return inspection
+     * (C-39). Charges nobody. Only amount, notes and an evidence reference
+     * are accepted; everything else is derived from the inspection.
+     */
+    public function recordDamageAssessment(
+        Request $request,
+        RentalInspection $inspection,
+        RentalDamageAssessmentService $assessments,
+    ) {
+        abort_if(! $request->user()->can('manage_operations'), 403);
+
+        $data = $request->validate([
+            'amount' => ['required', 'integer', 'min:0', 'max:999999999999'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'evidence_reference' => ['nullable', 'string', 'max:255'],
+        ], [
+            'amount.required' => 'ثبت مبلغ خسارت الزامی است.',
+            'amount.integer' => 'مبلغ خسارت باید عدد صحیح (تومان) باشد.',
+            'amount.min' => 'مبلغ خسارت نمی‌تواند منفی باشد.',
+        ]);
+
+        try {
+            $assessments->record(
+                $inspection,
+                $request->user(),
+                (int) $data['amount'],
+                $data['notes'] ?? null,
+                $data['evidence_reference'] ?? null,
+            );
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'ارزیابی خسارت ثبت شد. هیچ مبلغی از کسی دریافت یا کسر نشده است.');
     }
 
     /**

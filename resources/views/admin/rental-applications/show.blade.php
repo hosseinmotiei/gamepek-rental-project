@@ -118,6 +118,80 @@
     @endcan
 </div>
 
+{{-- ─── Finance, damage and closure: read-only facts ─────────────────── --}}
+@php
+    $settlement = $application->reservation?->settlement;
+@endphp
+@if ($closureReadiness || $settlement || $settlementPreview || $application->damageAssessments->isNotEmpty())
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
+    @if ($closureReadiness)
+        <x-admin.panel padded class="lg:col-span-2">
+            <h2 class="font-bold text-gray-800 text-sm mb-1">آمادگی برای بستن اجاره</h2>
+            <p class="text-[11px] text-gray-400 mb-4 leading-6">فقط گزارش است. اجاره به‌صورت خودکار بسته نمی‌شود و رویداد بستن هنوز تعیین نشده است.</p>
+            <ul class="text-xs divide-y divide-gray-100">
+                @foreach ($closureReadiness['items'] as $item)
+                    <li class="py-2 flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-gray-700">{{ $item['label'] }}</p>
+                            @if ($item['detail'])<p class="text-[11px] text-gray-400 mt-0.5">{{ $item['detail'] }}</p>@endif
+                        </div>
+                        <span class="shrink-0 text-[11px] font-bold {{ match ($item['status']) {
+                            'satisfied' => 'text-green-700', 'not_applicable' => 'text-gray-400',
+                            'missing' => 'text-amber-700', default => 'text-red-600' } }}">
+                            {{ \App\Services\Rental\RentalClosureReadiness::statusLabel($item['status']) }}
+                        </span>
+                    </li>
+                @endforeach
+            </ul>
+        </x-admin.panel>
+    @endif
+
+    <div class="space-y-5">
+        @if ($settlement || $settlementPreview)
+            <x-admin.panel padded>
+                <h2 class="font-bold text-gray-800 text-sm mb-3">سهم گیم‌پک و مالک (۳۵/۶۵)</h2>
+                @php $split = $settlement ?? $settlementPreview; @endphp
+                <dl class="text-xs space-y-2">
+                    <div class="flex justify-between"><dt class="text-gray-500">مبلغ مبنا</dt><dd>{{ persian_number(number_format($settlement?->gross_amount ?? $settlementPreview->gross)) }} تومان</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">سهم گیم‌پک</dt><dd>{{ persian_number(number_format($settlement?->gamepek_share ?? $settlementPreview->gamepekShare)) }} تومان</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">سهم مالک</dt><dd>{{ persian_number(number_format($settlement?->owner_share ?? $settlementPreview->ownerShare)) }} تومان</dd></div>
+                    <div class="flex justify-between"><dt class="text-gray-500">وضعیت</dt>
+                        <dd class="font-bold">{{ $settlement ? $settlement->statusLabel() : 'پیش‌نمایش — ثبت نشده' }}</dd></div>
+                    @if ($settlement)
+                        <div class="flex justify-between"><dt class="text-gray-500">شناسه</dt><dd class="font-mono" dir="ltr">{{ $settlement->reference_number }}</dd></div>
+                    @endif
+                </dl>
+                @if (! $settlement && $application->state === App\Enums\RentalApplicationState::Returned)
+                    @can('manage_rental_applications')
+                        <form method="POST" action="{{ route('admin.rental-applications.settlement.calculate', $application) }}" class="mt-4"
+                              data-confirm="محاسبه سهم ثبت شود؟ هیچ پرداختی انجام نمی‌شود.">
+                            @csrf
+                            <button type="submit" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2.5 rounded-xl">ثبت محاسبه سهم</button>
+                        </form>
+                    @endcan
+                @endif
+                <p class="text-[11px] text-gray-400 mt-3 leading-6">این مبالغ پرداخت نشده‌اند. زمان و شیوه پرداخت هنوز تعیین نشده است.</p>
+            </x-admin.panel>
+        @endif
+
+        @if ($application->damageAssessments->isNotEmpty())
+            <x-admin.panel padded>
+                <h2 class="font-bold text-gray-800 text-sm mb-3">ارزیابی خسارت کارشناس</h2>
+                <ul class="text-xs divide-y divide-gray-100">
+                    @foreach ($application->damageAssessments->sortByDesc('id') as $assessment)
+                        <li class="py-2">
+                            {{ persian_number(number_format($assessment->amount)) }} تومان
+                            <span class="text-gray-400">· {{ $assessment->assessor?->full_name ?? '—' }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+                <p class="text-[11px] text-gray-400 mt-3 leading-6">ثبت شده است؛ از کسی دریافت یا از ودیعه کسر نشده است.</p>
+            </x-admin.panel>
+        @endif
+    </div>
+</div>
+@endif
+
 <x-admin.panel padded class="mt-5">
     <h2 class="font-bold text-gray-800 text-sm mb-4">رزرو</h2>
     @if(! $application->reservation)
@@ -132,7 +206,7 @@
             <div><dt class="text-xs text-gray-400">اجاره‌بها</dt><dd class="text-gray-700">{{ persian_number(number_format($reservation->rental_total)) }} تومان</dd></div>
             <div><dt class="text-xs text-gray-400">پرداختی</dt><dd class="font-bold text-gray-800">{{ persian_number(number_format($reservation->payable_now)) }} تومان</dd></div>
             {{-- Deposit is blocked, never charged — it is not part of payable_now. --}}
-            <div><dt class="text-xs text-gray-400">ودیعه (بلوکه)</dt><dd class="text-gray-700">{{ persian_number(number_format($reservation->deposit_amount)) }} تومان</dd></div>
+            <div><dt class="text-xs text-gray-400">ودیعه (دریافت نشده؛ قاعده تعیین نشده)</dt><dd class="text-gray-700">{{ persian_number(number_format($reservation->deposit_amount)) }} تومان</dd></div>
         </dl>
     @endif
 </x-admin.panel>

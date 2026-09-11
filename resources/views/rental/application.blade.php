@@ -197,7 +197,7 @@
                     </span>
                 </div>
                 <div class="flex items-center justify-between">
-                    <span class="text-gray-500">ودیعه (بلوکه، دریافت نمی‌شود)</span>
+                    <span class="text-gray-500">ودیعه (در این مرحله دریافت نمی‌شود)</span>
                     <span class="font-bold text-gray-700">
                         {{ number_format($reservation->deposit_amount) }} تومان
                     </span>

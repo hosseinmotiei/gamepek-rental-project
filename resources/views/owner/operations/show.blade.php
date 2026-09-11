@@ -69,6 +69,16 @@
             </div>
         </dl>
 
+        {{-- The owner's calculated 65%, only once a calculation exists --
+             and never presented as paid money. --}}
+        @if ($settlement = $operation->reservation?->settlement)
+            <div class="mt-5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-700 leading-6">
+                سهم محاسبه‌شده شما از این اجاره:
+                <span class="font-bold">{{ persian_number(number_format($settlement->owner_share)) }} تومان</span>
+                <span class="block text-[11px] text-gray-500">{{ $settlement->statusLabel() }}. زمان و شیوه پرداخت هنوز تعیین نشده است.</span>
+            </div>
+        @endif
+
         <p class="text-[11px] text-gray-400 mt-5 leading-6">
             سپردن دستگاه به گیم‌پک مالکیت آن را منتقل نمی‌کند؛ دستگاه همچنان به نام شما ثبت است.
             تأیید شما صرفاً تأیید همین سابقه است و امضا یا رسید قانونی محسوب نمی‌شود.

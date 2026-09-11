@@ -48,7 +48,7 @@
         </div>
 
         <div class="flex items-center justify-between">
-            <dt class="text-gray-500">ودیعه (قابل استرداد)</dt>
+            <dt class="text-gray-500">ودیعه</dt>
             <dd class="text-gray-600"><span data-quote="deposit">{{ persian_number($rentalQuote->deposit) }}</span></dd>
         </div>
     </dl>
@@ -56,7 +56,7 @@
 
 @unless($rental->isRentable())
 <div class="flex items-center justify-between text-xs mb-4">
-    <span class="text-gray-500">ودیعه (قابل استرداد)</span>
+    <span class="text-gray-500">ودیعه</span>
     <span class="text-gray-600">{{ persian_number($rental->deposit()) }}</span>
 </div>
 @endunless

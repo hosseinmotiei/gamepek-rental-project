@@ -8,6 +8,8 @@ use App\Models\RentalApplication;
 use App\Services\Contract\ContractService;
 use App\Services\Guarantee\GuaranteeService;
 use App\Services\Rental\RentalChainOrchestrator;
+use App\Services\Rental\RentalClosureReadiness;
+use App\Services\Rental\RentalSettlementService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -57,11 +59,43 @@ class RentalApplicationController extends Controller
         abort_if(! auth()->user()->can('view_rental_applications'), 403);
 
         $rentalApplication->load([
-            'user.identity', 'order', 'reservation.product',
+            'user.identity', 'order', 'reservation.product', 'reservation.settlement',
             'guarantee.inquiries', 'contract.signatures', 'transitions',
+            'damageAssessments.assessor',
         ]);
 
-        return view('admin.rental-applications.show', ['application' => $rentalApplication]);
+        $reservation = $rentalApplication->reservation;
+
+        return view('admin.rental-applications.show', [
+            'application' => $rentalApplication,
+            // Read-only reports; neither writes anything.
+            'closureReadiness' => $rentalApplication->state === RentalApplicationState::Returned
+                ? app(RentalClosureReadiness::class)->check($rentalApplication)
+                : null,
+            'settlementPreview' => $reservation && ! $reservation->settlement
+                ? app(RentalSettlementService::class)->preview($reservation)
+                : null,
+        ]);
+    }
+
+    /**
+     * Record the 35/65 CALCULATION for a returned owner rental. Moves no
+     * money. Refused (and audited) while the gross basis is undecided.
+     */
+    public function calculateSettlement(
+        Request $request,
+        RentalApplication $rentalApplication,
+        RentalSettlementService $settlements,
+    ): RedirectResponse {
+        abort_if(! auth()->user()->can('manage_rental_applications'), 403);
+
+        try {
+            $settlements->calculate($rentalApplication, $request->user());
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'سهم گیم‌پک و مالک محاسبه شد. هیچ پرداختی انجام نشده است.');
     }
 
     /** Re-derives the state from the child facts. Never forces a target. */

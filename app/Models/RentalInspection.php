@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\RentalInspectionStage;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * One piece of condition evidence about a device, recorded against the
@@ -58,6 +59,11 @@ class RentalInspection extends Model
     public function custodyTransfer(): BelongsTo
     {
         return $this->belongsTo(DeviceCustodyTransfer::class, 'device_custody_transfer_id');
+    }
+
+    public function damageAssessments(): HasMany
+    {
+        return $this->hasMany(RentalDamageAssessment::class, 'rental_inspection_id');
     }
 
     public function device(): BelongsTo

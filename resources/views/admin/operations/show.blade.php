@@ -232,6 +232,38 @@
                                     <span class="text-[11px] text-gray-400 shrink-0" dir="ltr">{{ $inspection->inspected_at?->format('Y-m-d H:i') }}</span>
                                 </div>
                                 <p class="text-gray-700 text-xs leading-6 mt-1 whitespace-pre-line">{{ $inspection->findings }}</p>
+
+                                {{-- C-39: the expert's amount. Recorded only; nobody is charged. --}}
+                                @if ($inspection->stage === App\Enums\RentalInspectionStage::CustomerReturn)
+                                    @foreach ($inspection->damageAssessments->sortBy('id') as $assessment)
+                                        <div class="mt-2 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-[11px] text-amber-800">
+                                            ارزیابی خسارت: {{ persian_number(number_format($assessment->amount)) }} تومان
+                                            · {{ $assessment->assessor?->full_name ?? '—' }}
+                                            · <span dir="ltr">{{ $assessment->assessed_at?->format('Y-m-d H:i') }}</span>
+                                            @if ($assessment->evidence_reference)
+                                                · مدرک: <span dir="ltr">{{ $assessment->evidence_reference }}</span>
+                                            @endif
+                                            @if ($assessment->notes)
+                                                <p class="mt-1 whitespace-pre-line">{{ $assessment->notes }}</p>
+                                            @endif
+                                        </div>
+                                    @endforeach
+
+                                    @if ($canManage)
+                                        <form method="POST" action="{{ route('admin.operations.inspections.damage.store', $inspection) }}"
+                                              class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                            @csrf
+                                            <input type="number" name="amount" min="0" step="1" required dir="ltr" placeholder="مبلغ خسارت (تومان)"
+                                                   class="border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
+                                            <input type="text" name="evidence_reference" maxlength="255" placeholder="شناسه مدرک (اختیاری)"
+                                                   class="border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
+                                            <input type="text" name="notes" maxlength="2000" placeholder="توضیح کارشناس (اختیاری)"
+                                                   class="border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-brandBlue">
+                                            <button type="submit" data-confirm="ارزیابی خسارت ثبت شود؟ سابقه ثبت‌شده قابل ویرایش نیست."
+                                                    class="sm:col-span-3 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-xs font-bold">ثبت ارزیابی خسارت</button>
+                                        </form>
+                                    @endif
+                                @endif
                             </li>
                         @endforeach
                     </ol>

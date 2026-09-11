@@ -15,12 +15,15 @@ use App\Models\RentalApplicationTransition;
 use App\Models\RentalInspection;
 use App\Models\RentalOperation;
 use App\Models\RentalReservation;
+use App\Models\RentalSettlement;
 use App\Models\User;
+use App\Models\WalletTransaction;
 use App\Services\Otp\OtpProviderInterface;
 use App\Services\Rental\DeviceCustodyService;
 use App\Services\Rental\DeviceRegistrationService;
 use App\Services\Rental\OperationCustodyReconciler;
 use App\Services\Rental\RentalChainOrchestrator;
+use App\Services\Rental\RentalClosureReadiness;
 use App\Services\Rental\RentalOperationService;
 use Database\Seeders\ContractTemplateSeeder;
 use Database\Seeders\UserSeeder;
@@ -202,6 +205,23 @@ class RentalEndToEndLifecycleTest extends TestCase
         $this->assertSame(RentalApplicationState::Returned, $application->refresh()->state);
         $this->assertSame(0, $this->transitionsTo($application->id, RentalApplicationState::Closed));
         $this->assertSame([], app(OperationCustodyReconciler::class)->findings()->all());
+
+        // 10. Closure readiness: every physical step is reported done, the
+        // policy steps are reported undecided, and nothing closes or pays.
+        $readiness = app(RentalClosureReadiness::class)->check($application->refresh());
+        $items = collect($readiness['items'])->pluck('status', 'key');
+
+        $this->assertSame('satisfied', $items['customer_return']);
+        $this->assertSame('satisfied', $items['return_inspection']);
+        $this->assertSame('satisfied', $items['owner_return']);
+        $this->assertSame('policy_undefined', $items['settlement']);
+        $this->assertSame('policy_undefined', $items['deposit']);
+        $this->assertSame('policy_undefined', $items['closure_trigger']);
+        $this->assertFalse($readiness['ready']);
+
+        $this->assertSame(RentalApplicationState::Returned, $application->refresh()->state);
+        $this->assertSame(0, RentalSettlement::count());
+        $this->assertSame(0, WalletTransaction::count());
     }
 
     // ── Invalid and duplicate actions ────────────────────────────────────

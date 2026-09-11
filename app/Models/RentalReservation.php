@@ -6,6 +6,7 @@ use App\Enums\ReservationState;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class RentalReservation extends Model
 {
@@ -57,6 +58,12 @@ class RentalReservation extends Model
     public function device(): BelongsTo
     {
         return $this->belongsTo(Device::class);
+    }
+
+    /** The calculated 35/65 split, once one exists. Never a payment. */
+    public function settlement(): HasOne
+    {
+        return $this->hasOne(RentalSettlement::class, 'rental_reservation_id');
     }
 
     public function operations(): HasMany
