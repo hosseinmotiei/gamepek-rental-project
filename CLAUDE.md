@@ -54,7 +54,9 @@ repository has a **test suite of 171 test methods**.
 | Live payment gateway | Not implemented — no credentials |
 | Live KYC / bank / cheque providers | Not implemented — none chosen |
 | Rental SMS notifications | Not implemented — no approved copy (B13) |
-| Wallet | **Frontend `localStorage` prototype only** |
+| Wallet backend (`WalletService`, persisted balance + immutable ledger) | Implemented — nothing calls `credit()`/`debit()` yet |
+| Wallet-driven settlement, payout, deposit, refund, damage charges | **Not implemented** |
+| Customer profile wallet tab | Still **frontend `localStorage` prototype**, not connected to the real backend |
 | Device allocation to a reservation | **Not implemented — undecided policy (section 10.3b)** |
 | Inspection / delivery / customer return / owner return / damage | Not implemented |
 | Receipt or signature for a custody handover | **Not implemented — open legal gate** |
@@ -195,6 +197,20 @@ Related invariants worth preserving:
 - `OrderService::markAsPaid()` is idempotent. Keep it that way.
 - Reservations are created under a product row lock with an overlap check
   against `rental_reservations` (`blocking()` scope).
+- **`App\Services\Wallet\WalletService` is the only writer of
+  `wallets.balance`.** Same discipline as `RentalChainOrchestrator`:
+  `credit()`/`debit()` run inside `lockForUpdate()` + `DB::transaction()`,
+  writing the balance and its explaining `WalletTransaction` ledger row
+  together or not at all. `wallet_transactions` is append-only — no
+  `updated_at`, and the model overrides `save()`/`update()`/`delete()` to
+  throw once a row exists, so history cannot be edited even by a future
+  mistake. An optional `idempotency_key`, unique per wallet at the database
+  level, makes a retried `credit()`/`debit()` call a no-op instead of a
+  double movement. **No settlement, owner payout, deposit, refund or
+  damage-charge policy is implemented or invented here** — nothing in the
+  codebase calls `credit()`/`debit()` yet; each future caller decides its
+  own trigger and reason when it is built. The customer profile's wallet
+  tab remains a separate, unconnected `localStorage` prototype (§9.12).
 
 ---
 
@@ -475,11 +491,19 @@ or its own change.
 11. **No delivery / pickup / inspection / return / damage workflow.** Only a
     flat `delivery_fee` in pricing, and unused media kinds
     (`handover_video`, `return_video`) with no workflow attached.
-12. **Wallet is a frontend prototype only.** The profile wallet tab (balance,
-    top-up, withdraw, history) is `localStorage` in Blade;
-    `Admin\WalletController` renders a view and nothing else. There is **no
-    wallet column, table, service or transaction**. **Do not treat any wallet
-    figure as real money.**
+12. **Wallet has a real backend now, but nothing writes to it yet.**
+    `App\Services\Wallet\WalletService` is the single writer of
+    `wallets.balance`, backed by a persisted, immutable ledger
+    (`wallet_transactions` — see §16 below). `Admin\WalletController` reads
+    real data (`admin/wallet`); it has no credit/debit form, on purpose.
+    **The customer profile's wallet tab (top-up, withdraw) is still
+    `localStorage` in Blade and is untouched by this backend — the two are
+    not connected.** Nothing in the codebase calls `WalletService::credit()`
+    or `debit()` yet: no settlement, owner payout, deposit, refund or
+    damage-charge logic exists or is invented by this service. **Do not
+    treat the profile wallet tab's figures as real money**, and do not wire
+    it to the real backend without a decision on what triggers a real
+    movement.
 13. **Rental SMS is not implemented.** `config('rental.sms.templates')` and
     `state_templates` are both empty (B13). No SMS fires on any state change;
     `SmsService` records `sms.template_undefined` so the gap stays visible.

@@ -104,6 +104,12 @@ class User extends Authenticatable
         return $this->hasMany(RentalApplication::class);
     }
 
+    /** Created on first use by WalletService -- may be null before that. */
+    public function wallet()
+    {
+        return $this->hasOne(Wallet::class);
+    }
+
     public function verificationMedia()
     {
         return $this->hasMany(VerificationMedia::class);

@@ -306,6 +306,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // ── Wallet ────────────────────────────────────────────────────────────
         Route::prefix('wallet')->name('wallet.')->group(function () {
             Route::get('/', [AdminWalletController::class, 'index'])->name('index');
+            Route::get('/{wallet}', [AdminWalletController::class, 'show'])->name('show');
         });
 
         // ── Users ─────────────────────────────────────────────────────────────

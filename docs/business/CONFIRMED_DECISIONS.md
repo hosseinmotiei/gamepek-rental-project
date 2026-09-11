@@ -133,7 +133,7 @@ this.**
 | C-21 / C-22 | Admin-controlled multi-day discounts | Duration discount tiers exist in `config('rental.pricing.duration_discounts')` but are a **hardcoded placeholder**, not admin-editable and not owner-approved values |
 | C-23 | Selected game affects price | `RentalPricingService::quote()` accepts a `gameFee` parameter, but it is **always passed 0**; there is no game selection |
 | C-26 / C-27 / C-28 | 35/65 split, daily settlement | **No settlement, commission or payout code exists** |
-| C-29 | Wallet carries financial movement | **Wallet is a frontend `localStorage` prototype.** No balance column, no ledger, no service |
+| C-29 | Wallet carries financial movement | **Backend now implemented** (`App\Services\Wallet\WalletService`, `wallets`, `wallet_transactions`) — persisted balance, immutable ledger, idempotent credit/debit. **Nothing calls it yet**: no settlement, payout, deposit, refund or damage-charge logic exists or is invented by it. The customer profile's wallet tab is still a separate, unconnected `localStorage` prototype |
 | C-30 | SMS on all lifecycle events | **No SMS is ever sent.** Templates are empty; the seam exists |
 | C-01 / C-02 | Tehran, zones 1–2 | `config('rental.search.cities')` is `['تهران']` — city is enforced, **zones are not modelled at all** |
 
