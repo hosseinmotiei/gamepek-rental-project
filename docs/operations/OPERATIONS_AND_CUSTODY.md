@@ -315,3 +315,38 @@ belonging to another owner.
   such transition exists
 
 See `docs/business/CONFIRMED_DECISIONS.md` §4 for the full register.
+
+## 11. Foundation hardening audit (no behaviour changed)
+
+A full audit of this domain -- `RentalOperationService`, `DeviceCustodyService`,
+`OperationCustodyReconciler`, `Admin\OperationController`,
+`OwnerOperationController`, `RentalOperationPolicy`, and every route in
+`owner/operations` and `admin/operations` -- found the state machine,
+authorization, locking, idempotency and audit trail already sound. No security
+or validation defect was found; no code in this domain changed as a result.
+What the audit added was test coverage for paths that had none:
+
+- `RentalOperationService::schedule()` had zero test coverage at all -- now
+  covered, both the happy path and its state guard.
+- `start()` on an already-`in_progress` operation was untested -- now
+  covered (refused, no side effect).
+- `DeviceCustodyService::acknowledgeByOwner()` had no test for a transfer
+  still in `requested` (possession not yet moved) -- now covered at both the
+  service and the `owner.operations.acknowledge` route.
+- `OperationCustodyReconciler::ACTOR_PAIR_MISMATCH` remains untestable at the
+  integration level on purpose: `CustodyTransferType` has exactly one case
+  and the `device_custody_actor_pair_ck` database constraint (§6) refuses
+  the mismatched row even via a raw, service-bypassing write. Only the
+  underlying `DeviceCustodyTransfer::actorsMatchType()` predicate is unit
+  tested; a full reconciler-level test would require deliberately violating
+  that constraint, which was not done.
+
+**Customer-facing operation/custody status was deliberately NOT added.**
+`RentalOperation`/`DeviceCustodyTransfer` model exactly one leg: the owner's
+device reaching GamePek. There is no GamePek → customer leg (§2, §5).
+Showing a customer anything derived from this data -- "pickup: scheduled",
+"in progress" -- would misrepresent an owner-side logistics fact as if it
+were the customer's own delivery status, when no such customer-facing
+delivery process exists in the codebase at all. This is judged unsafe/
+misleading rather than merely incomplete, so nothing was added to the
+customer-facing Rental Application page.
