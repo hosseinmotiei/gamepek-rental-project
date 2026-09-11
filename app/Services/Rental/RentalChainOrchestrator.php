@@ -33,7 +33,10 @@ use Illuminate\Support\Facades\DB;
  */
 class RentalChainOrchestrator
 {
-    public function __construct(private SignatureProviderInterface $signatures) {}
+    public function __construct(
+        private SignatureProviderInterface $signatures,
+        private ?RentalClosureReadiness $closureReadiness = null,
+    ) {}
 
     public function advance(RentalApplication $application, ?string $reason = null): RentalApplication
     {
@@ -408,6 +411,68 @@ class RentalChainOrchestrator
 
             $from = $locked->state;
             $this->commit($locked, $from, $target, null, $actor);
+
+            $application->setRawAttributes($locked->getAttributes(), true);
+
+            return $application;
+        });
+    }
+
+    /**
+     * Returned -> Closed. The only producer of Closed.
+     *
+     * Not event-driven (config('rental.lifecycle.closure_trigger') stays null
+     * and transitionPostApproval() keeps refusing Closed): closure is an
+     * explicit act, allowed only when RentalClosureReadiness reports every
+     * blocking prerequisite satisfied -- checked before the transaction so a
+     * denial is audited durably, and again under the row lock.
+     *
+     * Idempotent: an already-closed rental is returned unchanged.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function close(RentalApplication $application, User $actor): RentalApplication
+    {
+        $this->closureReadiness ??= app(RentalClosureReadiness::class);
+
+        $current = RentalApplication::whereKey($application->id)->firstOrFail();
+
+        if ($current->state === RentalApplicationState::Closed) {
+            $application->setRawAttributes($current->getAttributes(), true);
+
+            return $application;
+        }
+
+        $report = $this->closureReadiness->check($current);
+
+        if ($current->state !== RentalApplicationState::Returned || ! $report['ready']) {
+            AuditLogger::log(
+                action: 'rental_application.closure_denied',
+                resourceType: 'RentalApplication',
+                resourceId: $current->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: ['state' => $current->state->value, 'missing' => RentalClosureReadiness::missing($report)],
+                actor: $actor,
+            );
+
+            throw new \RuntimeException('پیش‌نیازهای بستن این اجاره هنوز کامل نشده است.');
+        }
+
+        return DB::transaction(function () use ($application, $actor) {
+            $locked = RentalApplication::where('id', $application->id)->lockForUpdate()->first();
+
+            if ($locked->state === RentalApplicationState::Closed) {
+                $application->setRawAttributes($locked->getAttributes(), true);
+
+                return $application;
+            }
+
+            if ($locked->state !== RentalApplicationState::Returned
+                || ! $this->closureReadiness->check($locked)['ready']) {
+                throw new \RuntimeException('پیش‌نیازهای بستن این اجاره هنوز کامل نشده است.');
+            }
+
+            $this->commit($locked, RentalApplicationState::Returned, RentalApplicationState::Closed, 'closure prerequisites satisfied', $actor);
 
             $application->setRawAttributes($locked->getAttributes(), true);
 

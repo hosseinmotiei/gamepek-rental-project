@@ -7,8 +7,10 @@ use App\Http\Controllers\Controller;
 use App\Models\RentalApplication;
 use App\Services\Contract\ContractService;
 use App\Services\Guarantee\GuaranteeService;
+use App\Services\Rental\GuaranteeNoteService;
 use App\Services\Rental\RentalChainOrchestrator;
 use App\Services\Rental\RentalClosureReadiness;
+use App\Services\Rental\RentalDamageAssessmentService;
 use App\Services\Rental\RentalSettlementService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -59,7 +61,7 @@ class RentalApplicationController extends Controller
         abort_if(! auth()->user()->can('view_rental_applications'), 403);
 
         $rentalApplication->load([
-            'user.identity', 'order', 'reservation.product', 'reservation.settlement',
+            'user.identity', 'order', 'reservation.product', 'reservation.settlement.credit',
             'guarantee.inquiries', 'contract.signatures', 'transitions',
             'damageAssessments.assessor',
         ]);
@@ -75,7 +77,69 @@ class RentalApplicationController extends Controller
             'settlementPreview' => $reservation && ! $reservation->settlement
                 ? app(RentalSettlementService::class)->preview($reservation)
                 : null,
+            'damageStatus' => app(RentalDamageAssessmentService::class)->statusFor($rentalApplication->id),
+            'noteStatus' => app(GuaranteeNoteService::class)->statusFor($rentalApplication->id),
         ]);
+    }
+
+    /** GamePek physically received the customer's promissory note. */
+    public function receiveNote(Request $request, RentalApplication $rentalApplication, GuaranteeNoteService $notes): RedirectResponse
+    {
+        return $this->closeoutAction($request, fn () => $notes->receive($rentalApplication, $request->user(), $this->noteText($request)), 'دریافت سفته ثبت شد.');
+    }
+
+    /** Note back to the customer: no damage, or damage paid. */
+    public function returnNote(Request $request, RentalApplication $rentalApplication, GuaranteeNoteService $notes): RedirectResponse
+    {
+        return $this->closeoutAction($request, fn () => $notes->returnToCustomer($rentalApplication, $request->user(), $this->noteText($request)), 'بازگرداندن سفته به مشتری ثبت شد.');
+    }
+
+    /** Unpaid damage: note handed to the loss-bearing owner. */
+    public function transferNote(Request $request, RentalApplication $rentalApplication, GuaranteeNoteService $notes): RedirectResponse
+    {
+        return $this->closeoutAction($request, fn () => $notes->transferToOwner($rentalApplication, $request->user(), $this->noteText($request)), 'تحویل سفته به مالک ثبت شد.');
+    }
+
+    /** The customer paid the current assessed damage directly. */
+    public function recordDamagePayment(Request $request, RentalApplication $rentalApplication, RentalDamageAssessmentService $damage): RedirectResponse
+    {
+        abort_if(! auth()->user()->can('manage_rental_applications'), 403);
+
+        $data = $request->validate([
+            'payment_reference' => ['required', 'string', 'max:100'],
+        ], ['payment_reference.required' => 'ثبت شناسه پرداخت الزامی است.']);
+
+        return $this->closeoutAction($request, fn () => $damage->recordPayment($rentalApplication, $request->user(), $data['payment_reference']), 'پرداخت خسارت ثبت شد.');
+    }
+
+    /** Credit the owner's share to the owner's wallet, once. */
+    public function finalizeSettlement(Request $request, RentalApplication $rentalApplication, RentalSettlementService $settlements): RedirectResponse
+    {
+        return $this->closeoutAction($request, fn () => $settlements->finalize($rentalApplication, $request->user()), 'سهم مالک به کیف پول او واریز شد.');
+    }
+
+    /** Returned -> Closed, only when every prerequisite is met. */
+    public function close(Request $request, RentalApplication $rentalApplication): RedirectResponse
+    {
+        return $this->closeoutAction($request, fn () => $this->orchestrator->close($rentalApplication, $request->user()), 'اجاره بسته شد.');
+    }
+
+    private function closeoutAction(Request $request, callable $action, string $success): RedirectResponse
+    {
+        abort_if(! $request->user()->can('manage_rental_applications'), 403);
+
+        try {
+            $action();
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', $success);
+    }
+
+    private function noteText(Request $request): ?string
+    {
+        return $request->validate(['notes' => ['nullable', 'string', 'max:1000']])['notes'] ?? null;
     }
 
     /**

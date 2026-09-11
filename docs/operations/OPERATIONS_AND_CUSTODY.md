@@ -598,6 +598,40 @@ and to whom, whether an assessment is required when nothing is damaged,
 anything after the owner's window closes, closure trigger, tax/invoice rules,
 GamePek-owned revenue treatment, early-return date release (§14.5).
 
+## 16. Close-out: promissory note, damage payment, owner credit, closure
+
+Supersedes the "not decided" parts of §15 for the rules confirmed as C-41–C-47.
+
+| Step | Service | Record |
+|---|---|---|
+| Note received from customer | `GuaranteeNoteService::receive()` | `guarantee_note_events` (received) |
+| Expert's damage amount (0 = no damage) | `RentalDamageAssessmentService::record()` | `rental_damage_assessments` (latest is current; frozen once paid or note resolved) |
+| Customer pays assessed amount directly | `RentalDamageAssessmentService::recordPayment()` | `rental_damage_payments` (one per assessment, amount copied, external reference; no wallet movement) |
+| Note back to customer (no damage / paid) | `GuaranteeNoteService::returnToCustomer()` | final event, basis recorded |
+| Note to loss-bearing owner (unpaid) | `GuaranteeNoteService::transferToOwner()` | final event naming owner + device; owner devices only |
+| Owner's 65% to Owner Wallet | `RentalSettlementService::finalize()` | `rental_settlement_credits` → one `wallet_transactions` credit, key `settlement:{ref}:owner` |
+| Returned → Closed | `RentalChainOrchestrator::close()` | transition, only when `RentalClosureReadiness` is ready |
+
+Closure prerequisites (all blocking): customer return, return inspection,
+damage resolved (none / paid / note transferred), note returned or
+transferred, owner's window over, device back with owner, owner credited.
+GamePek-owned devices: window, owner return and settlement are not applicable.
+Evidence retention (B11) is shown but does not block. There is still no
+automatic closure: `closure_trigger` stays null and `transitionPostApproval()`
+refuses Closed.
+
+Invariants: return and transfer are exclusive (unique index + lock); every
+identifier is derived from the application; damage payment is refused after
+the note went to the owner. The reconciler reports settlement credits without
+ledger evidence, amount mismatches, duplicate owner credits, ledger credits
+without a settlement record, ineligible settlements, Closed rentals missing
+prerequisites, contradictory note outcomes and damage-payment mismatches.
+
+Still NOT decided: the automatic *daily* settlement run; where a damage
+payment's money goes; what happens to the note for unpaid damage on a
+GamePek-owned device; any deadline for the customer to pay; what the
+product's `deposit` figure means now that no cash deposit exists.
+
 ## 12. Delivery / customer custody feasibility analysis -- superseded by §13
 
 A task requested adding the `gamepek -> customer`, `customer -> gamepek` and

@@ -187,6 +187,10 @@ class RentalFinanceFoundationTest extends TestCase
     {
         [, $application] = $this->returned('09170005001', '09170005002', 'FIN-001');
 
+        // The basis is now confirmed (rental price only) and set by default;
+        // an unset basis must STILL fail closed rather than be guessed.
+        config()->set('rental.settlement.gross_basis', null);
+
         try {
             app(RentalSettlementService::class)->calculate($application, $this->admin);
             $this->fail('The basis is undecided; nothing may be calculated.');
@@ -327,7 +331,8 @@ class RentalFinanceFoundationTest extends TestCase
             ->get(route('owner.operations.show', $pickup))
             ->assertOk()
             ->assertSee($share)
-            ->assertSee('پرداخت نشده');
+            // Calculated is never shown as paid ("واریز نشده": not credited).
+            ->assertSee('واریز نشده');
 
         $stranger = $this->device($application->product, '09170005017', 'FIN-008-B')->owner->user;
         $this->actingAs($stranger)->get(route('owner.operations.show', $pickup))->assertForbidden();
@@ -450,7 +455,11 @@ class RentalFinanceFoundationTest extends TestCase
         $this->assertSame(0, RentalDamageAssessment::count());
     }
 
-    public function test_the_customer_never_sees_a_damage_assessment(): void
+    /**
+     * Confirmed since: the customer is told the assessed amount so they can
+     * pay it -- but never the expert's internal notes.
+     */
+    public function test_the_customer_sees_the_assessed_amount_but_never_the_expert_notes(): void
     {
         [$customer, $application, , , $return] = $this->returned('09170005032', '09170005033', 'DMG-007');
         $inspection = app(RentalInspectionService::class)->record($return, $this->admin, 'بررسی');
@@ -458,7 +467,7 @@ class RentalFinanceFoundationTest extends TestCase
 
         $this->actingAs($customer)->get(route('rental.applications.show', $application))
             ->assertOk()
-            ->assertDontSee(persian_number(number_format(654_321)))
+            ->assertSee(persian_number(number_format(654_321)))
             ->assertDontSee('یادداشت داخلی کارشناس');
 
         $this->actingAs($this->admin)->get(route('admin.rental-applications.show', $application))
@@ -480,9 +489,11 @@ class RentalFinanceFoundationTest extends TestCase
         $this->assertSame('missing', $before['return_inspection']);
         $this->assertSame('missing', $before['owner_return']);
         $this->assertSame('missing', $before['owner_defect_window']);
-        $this->assertSame('policy_undefined', $before['settlement']);
-        $this->assertSame('policy_undefined', $before['deposit']);
-        $this->assertSame('policy_undefined', $before['closure_trigger']);
+        // Superseded items (deposit, closure trigger) are gone: there is no
+        // cash deposit, and closure is gated by these confirmed prerequisites.
+        $this->assertSame('missing', $before['settlement']);
+        $this->assertSame('missing', $before['damage_resolution']);
+        $this->assertSame('missing', $before['guarantee_note']);
 
         app(RentalInspectionService::class)->record($return, $this->admin, 'بررسی');
         $ownerReturn = $this->operations->openOwnerReturnForReservation($reservation, $this->admin);
@@ -496,7 +507,8 @@ class RentalFinanceFoundationTest extends TestCase
         $this->assertSame('satisfied', $after['owner_return']);
         $this->assertSame('satisfied', $after['owner_defect_window']);
 
-        // Still not ready, and still not closed: the trigger is undecided.
+        // Still not ready, and still not closed: no damage outcome, no note
+        // resolution and no owner credit yet -- and readiness never closes.
         $this->assertFalse($readiness->check($application->refresh())['ready']);
         $this->assertSame(RentalApplicationState::Returned, $application->refresh()->state);
     }

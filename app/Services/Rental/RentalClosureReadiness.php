@@ -4,31 +4,31 @@ namespace App\Services\Rental;
 
 use App\Enums\CustodyTransferType;
 use App\Enums\DeviceOwnership;
+use App\Enums\GuaranteeNoteStatus;
 use App\Enums\RentalInspectionStage;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use App\Models\DeviceCustodyTransfer;
 use App\Models\RentalApplication;
-use App\Models\RentalDamageAssessment;
 use App\Models\RentalInspection;
 use App\Models\RentalOperation;
 use App\Models\RentalReservation;
 use App\Models\RentalSettlement;
+use App\Models\RentalSettlementCredit;
 use Illuminate\Support\Carbon;
 
 /**
- * What stands between a Returned rental and closure -- REPORTED, never acted on.
+ * What stands between a Returned rental and closure. READ-ONLY.
  *
- * READ-ONLY. It writes nothing and closes nothing. The closure trigger is
- * undecided (config('rental.lifecycle.closure_trigger') is null), so `ready`
- * cannot be true today: the policy items below always report
- * `policy_undefined`. Each item says only what is factually present.
+ * The confirmed closure path: customer return -> return inspection -> damage
+ * resolved (none / paid / note transferred to the owner) -> promissory note
+ * returned or transferred -> owner's two-hour window over -> device back with
+ * its owner -> settlement credited to the owner's wallet. Only when every
+ * BLOCKING item is satisfied (or not applicable) may
+ * RentalChainOrchestrator::close() run -- it re-checks this under a lock.
  *
- * Statuses:
- *   satisfied        the fact is recorded
- *   missing          the fact is not recorded yet
- *   not_applicable   the step does not apply (e.g. owner return for GamePek stock)
- *   policy_undefined whether/how this counts is an undecided business rule
+ * Evidence retention (B11) is listed for visibility but is not a closure
+ * prerequisite in the confirmed rules, so it does not block.
  */
 class RentalClosureReadiness
 {
@@ -40,8 +40,13 @@ class RentalClosureReadiness
 
     public const POLICY_UNDEFINED = 'policy_undefined';
 
+    public function __construct(
+        private RentalDamageAssessmentService $damage,
+        private GuaranteeNoteService $notes,
+    ) {}
+
     /**
-     * @return array{ready: bool, items: list<array{key: string, label: string, status: string, detail: string}>}
+     * @return array{ready: bool, items: list<array{key: string, label: string, status: string, detail: string, blocking: bool}>}
      */
     public function check(RentalApplication $application, ?Carbon $at = null): array
     {
@@ -61,15 +66,32 @@ class RentalClosureReadiness
             ->first();
         $deadline = $returnTransfer?->ownerDefectReportDeadline();
 
+        $damage = $this->damage->statusFor($application->id)['status'];
+        $note = $this->notes->statusFor($application->id);
+
+        $settlement = $reservation === null ? null : RentalSettlement::where('rental_reservation_id', $reservation->id)->first();
+        $credited = $settlement !== null && RentalSettlementCredit::where('rental_settlement_id', $settlement->id)->exists();
+
         $items = [];
 
         $items[] = $this->item('customer_return', 'دریافت دستگاه از مشتری',
-            $completed(RentalOperationType::CustomerReturn) ? self::SATISFIED : self::MISSING, '');
+            $completed(RentalOperationType::CustomerReturn) ? self::SATISFIED : self::MISSING);
 
         $items[] = $this->item('return_inspection', 'بازرسی دستگاه بازگشته',
             RentalInspection::where('rental_application_id', $application->id)
                 ->where('stage', RentalInspectionStage::CustomerReturn->value)->exists()
-                ? self::SATISFIED : self::MISSING, '');
+                ? self::SATISFIED : self::MISSING);
+
+        $items[] = $this->item('damage_resolution', 'تعیین تکلیف خسارت',
+            match (true) {
+                in_array($damage, [RentalDamageAssessmentService::NO_DAMAGE, RentalDamageAssessmentService::PAID], true) => self::SATISFIED,
+                $damage === RentalDamageAssessmentService::UNPAID && $note === GuaranteeNoteStatus::TransferredToOwner => self::SATISFIED,
+                default => self::MISSING,
+            },
+            RentalDamageAssessmentService::statusLabel($damage));
+
+        $items[] = $this->item('guarantee_note', 'تعیین تکلیف سفته',
+            $note->isResolved() ? self::SATISFIED : self::MISSING, $note->label());
 
         $items[] = $this->item('owner_defect_window', 'پایان مهلت دو ساعته اعلام ایراد توسط مالک',
             match (true) {
@@ -82,32 +104,43 @@ class RentalClosureReadiness
 
         $items[] = $this->item('owner_return', 'بازگرداندن دستگاه به مالک',
             ! $isOwnerDevice ? self::NOT_APPLICABLE
-                : ($completed(RentalOperationType::OwnerReturn) ? self::SATISFIED : self::MISSING), '');
+                : ($completed(RentalOperationType::OwnerReturn) ? self::SATISFIED : self::MISSING));
 
-        // Whether an assessment is required when nothing is damaged is not
-        // decided, so absence is reported as a policy question, not a gap.
-        $items[] = $this->item('damage_assessment', 'ارزیابی خسارت توسط کارشناس',
-            RentalDamageAssessment::where('rental_application_id', $application->id)->exists()
-                ? self::SATISFIED : self::POLICY_UNDEFINED,
-            'الزامی بودن ارزیابی در نبود خسارت تعیین نشده است.');
-
-        $items[] = $this->item('settlement', 'محاسبه سهم گیم‌پک و مالک (۳۵/۶۵)',
+        $items[] = $this->item('settlement', 'واریز سهم مالک به کیف پول',
             match (true) {
                 ! $isOwnerDevice => self::NOT_APPLICABLE,
-                $reservation !== null && RentalSettlement::where('rental_reservation_id', $reservation->id)->exists() => self::SATISFIED,
-                config('rental.settlement.gross_basis') === null => self::POLICY_UNDEFINED,
+                $credited => self::SATISFIED,
                 default => self::MISSING,
-            }, 'محاسبه است، نه پرداخت.');
+            },
+            $settlement === null ? 'محاسبه نشده' : ($credited ? 'واریز شده' : 'محاسبه‌شده — واریز نشده'));
 
-        $items[] = $this->item('deposit', 'تعیین تکلیف ودیعه', self::POLICY_UNDEFINED, 'قاعده ودیعه (B4) تعیین نشده است.');
-        $items[] = $this->item('evidence_retention', 'نگهداری مدارک و تصاویر', self::POLICY_UNDEFINED, 'قاعده نگهداری (B11) تعیین نشده است.');
-        $items[] = $this->item('closure_trigger', 'رویداد بستن اجاره',
-            config('rental.lifecycle.closure_trigger') === null ? self::POLICY_UNDEFINED : self::SATISFIED,
-            'رویداد بستن اجاره (B14) تعیین نشده است.');
+        $items[] = $this->item('evidence_retention', 'نگهداری مدارک و تصاویر', self::POLICY_UNDEFINED,
+            'قاعده نگهداری (B11) تعیین نشده است؛ پیش‌نیاز بستن نیست.', blocking: false);
 
-        $ready = collect($items)->every(fn (array $i) => in_array($i['status'], [self::SATISFIED, self::NOT_APPLICABLE], true));
+        $ready = collect($items)
+            ->filter(fn (array $i) => $i['blocking'])
+            ->every(fn (array $i) => in_array($i['status'], [self::SATISFIED, self::NOT_APPLICABLE], true));
 
         return ['ready' => $ready, 'items' => $items];
+    }
+
+    /**
+     * The four facts the confirmed settlement point waits for.
+     */
+    public function settlementPrerequisitesMet(RentalApplication $application): bool
+    {
+        $status = collect($this->check($application)['items'])->pluck('status', 'key');
+
+        return collect(['customer_return', 'return_inspection', 'owner_defect_window', 'owner_return'])
+            ->every(fn (string $key) => $status[$key] === self::SATISFIED);
+    }
+
+    /** @return list<string> the blocking items not yet satisfied */
+    public static function missing(array $report): array
+    {
+        return collect($report['items'])
+            ->filter(fn (array $i) => $i['blocking'] && ! in_array($i['status'], [self::SATISFIED, self::NOT_APPLICABLE], true))
+            ->pluck('key')->values()->all();
     }
 
     public static function statusLabel(string $status): string
@@ -121,8 +154,8 @@ class RentalClosureReadiness
         };
     }
 
-    private function item(string $key, string $label, string $status, string $detail): array
+    private function item(string $key, string $label, string $status, string $detail = '', bool $blocking = true): array
     {
-        return compact('key', 'label', 'status', 'detail');
+        return compact('key', 'label', 'status', 'detail', 'blocking');
     }
 }

@@ -115,6 +115,10 @@ return [
      * route lets anyone post a state, and the orchestrator remains the sole
      * writer of `rental_applications.state`.
      */
+    // closure_trigger stays null ON PURPOSE: there is no event that closes a
+    // rental automatically. Closure is an explicit act,
+    // RentalChainOrchestrator::close(), allowed only when
+    // RentalClosureReadiness reports every confirmed prerequisite satisfied.
     'lifecycle' => [
         'activation_trigger' => env('RENTAL_ACTIVATION_TRIGGER', 'customer_delivery_completed'),
         'return_trigger' => env('RENTAL_RETURN_TRIGGER', 'customer_return_completed'),
@@ -142,8 +146,12 @@ return [
      *
      * Nothing here moves money. There is no settlement trigger and no payout.
      */
+    // CONFIRMED since: the split applies to the rental price only -- the
+    // delivery fee and the promissory note are excluded. That is
+    // reservation.rental_total. Settlement credits the owner's wallet once the
+    // settlement point is reached (RentalSettlementService::finalize()).
     'settlement' => [
-        'gross_basis' => env('RENTAL_SETTLEMENT_GROSS_BASIS'),
+        'gross_basis' => env('RENTAL_SETTLEMENT_GROSS_BASIS', 'rental_total'),
     ],
 
     'contract' => [

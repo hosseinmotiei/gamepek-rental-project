@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 /**
@@ -52,10 +53,21 @@ class RentalSettlement extends Model
         throw new \LogicException('Rental settlements cannot be deleted.');
     }
 
+    /** Present only once the owner's share actually reached their wallet. */
+    public function credit(): HasOne
+    {
+        return $this->hasOne(RentalSettlementCredit::class, 'rental_settlement_id');
+    }
+
+    public function isCredited(): bool
+    {
+        return $this->relationLoaded('credit') ? $this->credit !== null : $this->credit()->exists();
+    }
+
     public function statusLabel(): string
     {
-        // Honest wording: calculated, and explicitly not paid.
-        return 'محاسبه‌شده — پرداخت نشده';
+        // Calculated is never presented as paid.
+        return $this->isCredited() ? 'به کیف پول مالک واریز شد' : 'محاسبه‌شده — واریز نشده';
     }
 
     public function reservation(): BelongsTo

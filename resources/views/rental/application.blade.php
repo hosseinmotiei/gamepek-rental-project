@@ -482,6 +482,39 @@
         </section>
     @endif
 
+    {{-- ─── Guarantee note and damage: the customer's own position ────────
+         Only facts about their obligation: the assessed amount, whether it
+         is paid, and where their promissory note is. No expert notes. --}}
+    @if (in_array($application->state, [RentalApplicationState::Returned, RentalApplicationState::Closed], true))
+        <section class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-5">
+            <header class="px-5 py-4 border-b border-gray-100">
+                <h2 class="text-sm md:text-base font-bold text-gray-800 flex items-center gap-2">
+                    <i class="fa-solid fa-file-signature text-gray-400"></i>
+                    سفته و خسارت
+                </h2>
+            </header>
+            <div class="p-5 space-y-3 text-xs md:text-sm">
+                <div class="flex items-center justify-between gap-3">
+                    <span class="text-gray-500">وضعیت بررسی خسارت</span>
+                    <span class="font-bold text-gray-800">{{ \App\Services\Rental\RentalDamageAssessmentService::statusLabel($damageStatus) }}</span>
+                </div>
+                @if ($damageAmount)
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-gray-500">مبلغ خسارت تعیین‌شده</span>
+                        <span class="font-bold text-gray-800">{{ persian_number(number_format($damageAmount)) }} تومان</span>
+                    </div>
+                @endif
+                <div class="flex items-center justify-between gap-3">
+                    <span class="text-gray-500">سفته شما</span>
+                    <span class="font-bold text-gray-800">{{ $noteStatus->label() }}</span>
+                </div>
+                @if ($damageStatus === \App\Services\Rental\RentalDamageAssessmentService::UNPAID)
+                    <p class="text-[11px] text-gray-500 leading-6">برای پرداخت خسارت با پشتیبانی گیم‌پک هماهنگ کنید.</p>
+                @endif
+            </div>
+        </section>
+    @endif
+
     {{-- Chain history. Every transition is recorded, so the customer can see
          exactly where the request stands and how it got there. --}}
     <section class="bg-white rounded-2xl border border-gray-100 shadow-sm">

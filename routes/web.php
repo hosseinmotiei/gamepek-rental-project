@@ -454,6 +454,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{rentalApplication}/owner-return', [AdminOperationController::class, 'openOwnerReturn'])->name('owner-return.open');
             // Records the 35/65 calculation only. Moves no money.
             Route::post('/{rentalApplication}/settlement', [AdminRentalApplicationController::class, 'calculateSettlement'])->name('settlement.calculate');
+            // Close-out: promissory note, damage payment, owner credit, closure.
+            // Every identifier is derived server-side from the application.
+            Route::post('/{rentalApplication}/guarantee-note/receive', [AdminRentalApplicationController::class, 'receiveNote'])->name('guarantee-note.receive');
+            Route::post('/{rentalApplication}/guarantee-note/return', [AdminRentalApplicationController::class, 'returnNote'])->name('guarantee-note.return');
+            Route::post('/{rentalApplication}/guarantee-note/transfer', [AdminRentalApplicationController::class, 'transferNote'])->name('guarantee-note.transfer');
+            Route::post('/{rentalApplication}/damage-payment', [AdminRentalApplicationController::class, 'recordDamagePayment'])->name('damage-payment.store');
+            Route::post('/{rentalApplication}/settlement/finalize', [AdminRentalApplicationController::class, 'finalizeSettlement'])->name('settlement.finalize');
+            Route::post('/{rentalApplication}/close', [AdminRentalApplicationController::class, 'close'])->name('close');
         });
 
         Route::get('/audit-events', [AdminAuditEventController::class, 'index'])->name('audit-events.index');

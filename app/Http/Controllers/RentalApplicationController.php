@@ -13,7 +13,9 @@ use App\Services\OtpService;
 use App\Services\PaymentService;
 use App\Services\Providers\ProviderException;
 use App\Services\Rental\DeviceCustodyService;
+use App\Services\Rental\GuaranteeNoteService;
 use App\Services\Rental\RentalChainOrchestrator;
+use App\Services\Rental\RentalDamageAssessmentService;
 use App\Services\Rental\RentalReservationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -129,7 +131,16 @@ class RentalApplicationController extends Controller
             'reservation.operations.custodyTransfer',
         ]);
 
-        return view('rental.application', ['application' => $application]);
+        // The customer's own obligations and their note -- read-only. Expert
+        // notes, evidence references and internal records are not passed.
+        $damage = app(RentalDamageAssessmentService::class)->statusFor($application->id);
+
+        return view('rental.application', [
+            'application' => $application,
+            'damageStatus' => $damage['status'],
+            'damageAmount' => $damage['assessment']?->amount,
+            'noteStatus' => app(GuaranteeNoteService::class)->statusFor($application->id),
+        ]);
     }
 
     /**

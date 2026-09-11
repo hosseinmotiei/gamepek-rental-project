@@ -47,7 +47,7 @@ repository has a **test suite of 171 test methods**.
 | Contract generation, acceptance, OTP signing | Mechanism implemented; **text has no legal validity** |
 | Admin verification / rental-application / audit screens | Implemented |
 | Reservation release or expiry | **Not implemented** |
-| Post-approval lifecycle | Active and Returned **implemented** — driven by delivery/return operations. Closed still **blocked (B14)** |
+| Post-approval lifecycle | Active, Returned and Closed **implemented** — Active/Returned by delivery/return operations, Closed by the readiness-gated `close()` |
 | Owner / lessor domain | Implemented — owners, mixed fleet, serials, admin review |
 | Operational task domain | Implemented — owner pickup, customer delivery, customer return, owner return |
 | Device custody history (owner -> GamePek) | Implemented — custody is separate from ownership |
@@ -59,8 +59,9 @@ repository has a **test suite of 171 test methods**.
 | Customer profile wallet tab | Still **frontend `localStorage` prototype**, not connected to the real backend |
 | Device allocation to a reservation | Manual admin attachment implemented (`attachDevice()`), now with device-level overlap safety — **selection policy itself remains undecided (section 10.3b)** |
 | Delivery / customer return / owner return | Implemented (staff-driven), all four custody legs. Inspection: **free-text append-only evidence only**. Damage: **expert amount recorded (append-only), never charged** (docs/operations/OPERATIONS_AND_CUSTODY.md §14–§15) |
-| Settlement (35/65) | **Calculation only** (`RentalSettlementService`), refused while `rental.settlement.gross_basis` is null. **No payout, trigger or wallet movement** |
-| Closure readiness | Read-only report (`RentalClosureReadiness`); Returned never auto-closes |
+| Settlement (35/65) | **Implemented**: rental price only, owner credited once to the Owner Wallet via `WalletService` after the settlement point. **No scheduled daily run** |
+| Promissory note / damage payment | **Implemented** (`GuaranteeNoteService`, `rental_damage_payments`); never modelled as money |
+| Closure | **Implemented**: `RentalChainOrchestrator::close()`, explicit and gated by `RentalClosureReadiness`; never automatic (docs/operations/OPERATIONS_AND_CUSTODY.md §16) |
 | Receipt/signature for a handover | Receipt reference recorded at the door; **whether a digital signature may replace the paper one is undecided** |
 
 The catalog entity is still named `Product`/`products`, and rental facts live

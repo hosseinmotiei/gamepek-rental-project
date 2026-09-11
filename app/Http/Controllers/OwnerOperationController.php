@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\GuaranteeNoteEvent;
 use App\Models\RentalOperation;
 use App\Services\Rental\DeviceCustodyService;
 use Illuminate\Http\Request;
@@ -46,9 +47,15 @@ class OwnerOperationController extends Controller
     {
         $this->authorize('view', $operation);
 
-        $operation->loadMissing(['device.product', 'custodyTransfer', 'reservation.settlement']);
+        $operation->loadMissing(['device.product', 'custodyTransfer', 'reservation.settlement.credit']);
 
-        return view('owner.operations.show', compact('operation'));
+        // Only a note handed to THIS owner is theirs to know about.
+        $noteTransferred = $operation->owner_id !== null && GuaranteeNoteEvent::where('rental_application_id', $operation->rental_application_id)
+            ->where('event', GuaranteeNoteEvent::TRANSFERRED_TO_OWNER)
+            ->where('owner_id', $operation->owner_id)
+            ->exists();
+
+        return view('owner.operations.show', compact('operation', 'noteTransferred'));
     }
 
     /**

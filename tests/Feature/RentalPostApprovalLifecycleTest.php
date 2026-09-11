@@ -247,6 +247,10 @@ class RentalPostApprovalLifecycleTest extends TestCase
             'admin.rental-applications.delivery.open' => 'Admin\OperationController@openDelivery',
             'admin.rental-applications.return.open' => 'Admin\OperationController@openReturn',
             'admin.rental-applications.owner-return.open' => 'Admin\OperationController@openOwnerReturn',
+            // The note returning to the customer is not a lifecycle transition;
+            // closing IS, and it is pinned to the readiness-gated action.
+            'admin.rental-applications.guarantee-note.return' => 'Admin\RentalApplicationController@returnNote',
+            'admin.rental-applications.close' => 'Admin\RentalApplicationController@close',
         ];
 
         $targets = ['active', 'returned', 'closed', 'activate', 'return', 'close'];

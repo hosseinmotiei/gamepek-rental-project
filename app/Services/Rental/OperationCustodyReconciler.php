@@ -7,10 +7,18 @@ use App\Enums\DeviceOwnership;
 use App\Enums\RentalApplicationState;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
+use App\Models\Device;
 use App\Models\DeviceCustodyTransfer;
+use App\Models\GuaranteeNoteEvent;
+use App\Models\Owner;
 use App\Models\RentalApplication;
+use App\Models\RentalDamageAssessment;
+use App\Models\RentalDamagePayment;
 use App\Models\RentalInspection;
 use App\Models\RentalOperation;
+use App\Models\RentalSettlement;
+use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use Illuminate\Support\Collection;
 
 /**
@@ -65,6 +73,30 @@ class OperationCustodyReconciler
     /** A delivery or return completed, but the rental never moved with it. */
     public const LIFECYCLE_BEHIND_OPERATION = 'lifecycle_behind_operation';
 
+    /** A settlement credit whose wallet ledger entry is missing or wrong. */
+    public const SETTLEMENT_CREDIT_WITHOUT_LEDGER = 'settlement_credit_without_ledger';
+
+    /** Credited amount, ledger amount and owner share disagree. */
+    public const SETTLEMENT_AMOUNT_MISMATCH = 'settlement_amount_mismatch';
+
+    /** More than one wallet credit carries the same settlement reference. */
+    public const DUPLICATE_OWNER_CREDIT = 'duplicate_owner_credit';
+
+    /** A wallet credit exists for a settlement not marked credited. */
+    public const LEDGER_CREDIT_WITHOUT_SETTLEMENT_RECORD = 'ledger_credit_without_settlement_record';
+
+    /** A settlement for a rental that is not returned/closed, or not an owner device. */
+    public const SETTLEMENT_FOR_INELIGIBLE_RENTAL = 'settlement_for_ineligible_rental';
+
+    /** A Closed rental whose closure prerequisites are not all met. */
+    public const CLOSED_WITHOUT_PREREQUISITES = 'closed_without_prerequisites';
+
+    /** One promissory note both returned to the customer and given to the owner. */
+    public const NOTE_RETURNED_AND_TRANSFERRED = 'note_returned_and_transferred';
+
+    /** A damage payment for a different amount than its assessment. */
+    public const DAMAGE_PAYMENT_MISMATCH = 'damage_payment_mismatch';
+
     /** The completed task and its transfer describe different legs. */
     public const TRANSFER_TYPE_MISMATCH = 'transfer_type_mismatch';
 
@@ -91,6 +123,7 @@ class OperationCustodyReconciler
             ->merge($this->transferFindings())
             ->merge($this->inspectionFindings())
             ->merge($this->lifecycleFindings())
+            ->merge($this->financeFindings())
             // A device mismatch is visible from both sides; report it once.
             ->unique(fn (array $f) => $f['code'].'|'.$f['operation_id'].'|'.$f['transfer_reference'])
             ->values();
@@ -113,6 +146,14 @@ class OperationCustodyReconciler
             self::ACTIVE_WITHOUT_DELIVERY => 'اجاره فعال است اما تحویلی به مشتری تکمیل نشده است',
             self::RETURNED_WITHOUT_RETURN => 'اجاره بازگشت‌خورده است اما دریافتی از مشتری تکمیل نشده است',
             self::LIFECYCLE_BEHIND_OPERATION => 'عملیات تکمیل شده اما وضعیت اجاره همراه آن تغییر نکرده است',
+            self::SETTLEMENT_CREDIT_WITHOUT_LEDGER => 'واریز تسویه ثبت شده اما سند کیف پول آن معتبر نیست',
+            self::SETTLEMENT_AMOUNT_MISMATCH => 'مبلغ واریز تسویه با سهم مالک هم‌خوان نیست',
+            self::DUPLICATE_OWNER_CREDIT => 'سهم مالک بیش از یک بار به کیف پول واریز شده است',
+            self::LEDGER_CREDIT_WITHOUT_SETTLEMENT_RECORD => 'واریز به کیف پول مالک بدون ثبت در تسویه',
+            self::SETTLEMENT_FOR_INELIGIBLE_RENTAL => 'تسویه برای اجاره‌ای که شرایط تسویه ندارد',
+            self::CLOSED_WITHOUT_PREREQUISITES => 'اجاره بسته شده اما پیش‌نیازهای بستن کامل نیست',
+            self::NOTE_RETURNED_AND_TRANSFERRED => 'سفته هم به مشتری بازگردانده و هم به مالک تحویل شده است',
+            self::DAMAGE_PAYMENT_MISMATCH => 'مبلغ پرداخت خسارت با ارزیابی هم‌خوان نیست',
             self::TRANSFER_TYPE_MISMATCH => 'نوع سابقه تحویل با نوع عملیات یکسان نیست',
             self::DEVICE_MISMATCH => 'دستگاه عملیات با دستگاه سابقه تحویل یکسان نیست',
             self::TRANSFERRED_BUT_NOT_COMPLETED => 'تحویل ثبت شده اما عملیات بسته نشده است',
@@ -346,6 +387,81 @@ class OperationCustodyReconciler
             if ($application !== null && ! in_array($application->state, $expected, true)) {
                 $findings[] = $this->finding(self::LIFECYCLE_BEHIND_OPERATION, $operation, null,
                     'عملیات تکمیل شده است اما درخواست '.$application->application_number.' هنوز در وضعیت '.$application->state->label().' است.');
+            }
+        }
+
+        return collect($findings);
+    }
+
+    /**
+     * Money, promissory notes and closure must agree with each other and with
+     * the wallet ledger. Every check below is something the write path already
+     * prevents; a finding means a row was written outside the services.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function financeFindings(): Collection
+    {
+        $findings = [];
+        $add = function (string $code, string $detail) use (&$findings) {
+            $findings[] = $this->finding($code, null, null, $detail);
+        };
+
+        foreach (RentalSettlement::with('credit')->get() as $settlement) {
+            $ref = $settlement->reference_number;
+            $application = RentalApplication::whereKey($settlement->rental_application_id)->first(['id', 'state']);
+            $device = Device::whereKey($settlement->device_id)->first(['id', 'ownership', 'owner_id']);
+
+            if (! in_array($application?->state, [RentalApplicationState::Returned, RentalApplicationState::Closed], true)
+                || $device?->ownership !== DeviceOwnership::Owner
+                || $device->owner_id !== $settlement->owner_id) {
+                $add(self::SETTLEMENT_FOR_INELIGIBLE_RENTAL, 'تسویه '.$ref.' به اجاره یا دستگاه واجد شرایط تعلق ندارد.');
+            }
+
+            $ledger = WalletTransaction::where('context->settlement_reference', $ref)->get();
+
+            if ($ledger->count() > 1) {
+                $add(self::DUPLICATE_OWNER_CREDIT, 'برای تسویه '.$ref.' '.$ledger->count().' واریز ثبت شده است.');
+            }
+
+            $credit = $settlement->credit;
+
+            if ($credit === null) {
+                if ($ledger->isNotEmpty()) {
+                    $add(self::LEDGER_CREDIT_WITHOUT_SETTLEMENT_RECORD, 'تسویه '.$ref.' واریز نشده ثبت شده اما در کیف پول واریز دارد.');
+                }
+
+                continue;
+            }
+
+            $entry = WalletTransaction::find($credit->wallet_transaction_id);
+            $ownerUserId = Owner::whereKey($settlement->owner_id)->value('user_id');
+            $walletUserId = $entry ? Wallet::whereKey($entry->wallet_id)->value('user_id') : null;
+
+            if ($entry === null || $entry->type !== WalletTransaction::TYPE_CREDIT || $walletUserId !== $ownerUserId) {
+                $add(self::SETTLEMENT_CREDIT_WITHOUT_LEDGER, 'واریز تسویه '.$ref.' به سند معتبری در کیف پول مالک اشاره نمی‌کند.');
+            } elseif ($entry->amount !== $settlement->owner_share || $credit->amount !== $settlement->owner_share) {
+                $add(self::SETTLEMENT_AMOUNT_MISMATCH, 'مبلغ واریز تسویه '.$ref.' با سهم مالک برابر نیست.');
+            }
+        }
+
+        $readiness = app(RentalClosureReadiness::class);
+
+        foreach (RentalApplication::where('state', RentalApplicationState::Closed->value)->get(['id', 'state', 'application_number']) as $application) {
+            if (! $readiness->check($application)['ready']) {
+                $add(self::CLOSED_WITHOUT_PREREQUISITES, 'درخواست '.$application->application_number.' بسته شده اما پیش‌نیازهای آن کامل نیست.');
+            }
+        }
+
+        GuaranteeNoteEvent::whereNotNull('final_marker')
+            ->get(['guarantee_id', 'event'])
+            ->groupBy('guarantee_id')
+            ->filter(fn ($events) => $events->pluck('event')->unique()->count() > 1)
+            ->each(fn ($events, $guaranteeId) => $add(self::NOTE_RETURNED_AND_TRANSFERRED, 'سفته ضمانت شماره '.$guaranteeId.' دو سرنوشت متناقض دارد.'));
+
+        foreach (RentalDamagePayment::all() as $payment) {
+            if (RentalDamageAssessment::whereKey($payment->rental_damage_assessment_id)->value('amount') !== $payment->amount) {
+                $add(self::DAMAGE_PAYMENT_MISMATCH, 'پرداخت خسارت شماره '.$payment->id.' با مبلغ ارزیابی برابر نیست.');
             }
         }
 

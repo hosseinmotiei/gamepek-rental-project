@@ -206,17 +206,19 @@ class RentalEndToEndLifecycleTest extends TestCase
         $this->assertSame(0, $this->transitionsTo($application->id, RentalApplicationState::Closed));
         $this->assertSame([], app(OperationCustodyReconciler::class)->findings()->all());
 
-        // 10. Closure readiness: every physical step is reported done, the
-        // policy steps are reported undecided, and nothing closes or pays.
+        // 10. Closure readiness: every physical step is reported done; the
+        // close-out steps (damage outcome, note, owner credit) are not, and
+        // nothing closes or pays on its own. RentalCloseoutTest runs the
+        // close-out itself.
         $readiness = app(RentalClosureReadiness::class)->check($application->refresh());
         $items = collect($readiness['items'])->pluck('status', 'key');
 
         $this->assertSame('satisfied', $items['customer_return']);
         $this->assertSame('satisfied', $items['return_inspection']);
         $this->assertSame('satisfied', $items['owner_return']);
-        $this->assertSame('policy_undefined', $items['settlement']);
-        $this->assertSame('policy_undefined', $items['deposit']);
-        $this->assertSame('policy_undefined', $items['closure_trigger']);
+        $this->assertSame('missing', $items['damage_resolution']);
+        $this->assertSame('missing', $items['guarantee_note']);
+        $this->assertSame('missing', $items['settlement']);
         $this->assertFalse($readiness['ready']);
 
         $this->assertSame(RentalApplicationState::Returned, $application->refresh()->state);

@@ -75,7 +75,13 @@
             <div class="mt-5 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-700 leading-6">
                 سهم محاسبه‌شده شما از این اجاره:
                 <span class="font-bold">{{ persian_number(number_format($settlement->owner_share)) }} تومان</span>
-                <span class="block text-[11px] text-gray-500">{{ $settlement->statusLabel() }}. زمان و شیوه پرداخت هنوز تعیین نشده است.</span>
+                <span class="block text-[11px] text-gray-500">{{ $settlement->statusLabel() }}</span>
+            </div>
+        @endif
+
+        @if ($noteTransferred)
+            <div class="mt-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-xs text-amber-800 leading-6">
+                سفته مشتری این اجاره برای پیگیری خسارت پرداخت‌نشده به شما تحویل شد.
             </div>
         @endif
 

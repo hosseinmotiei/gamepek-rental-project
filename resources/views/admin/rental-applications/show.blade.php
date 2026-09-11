@@ -118,6 +118,52 @@
     @endcan
 </div>
 
+{{-- ─── Close-out actions: note, damage payment, owner credit, closure ─── --}}
+@if (in_array($application->state, [App\Enums\RentalApplicationState::Approved, App\Enums\RentalApplicationState::Active, App\Enums\RentalApplicationState::Returned, App\Enums\RentalApplicationState::Closed], true))
+<x-admin.panel padded class="mt-5">
+    <h2 class="font-bold text-gray-800 text-sm mb-4">سفته، خسارت و تسویه</h2>
+    <dl class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-4">
+        <div><dt class="text-gray-400">سفته</dt><dd class="font-bold text-gray-700">{{ $noteStatus->label() }}</dd></div>
+        <div><dt class="text-gray-400">خسارت</dt><dd class="font-bold text-gray-700">
+            {{ \App\Services\Rental\RentalDamageAssessmentService::statusLabel($damageStatus['status']) }}
+            @if ($damageStatus['assessment']?->amount) — {{ persian_number(number_format($damageStatus['assessment']->amount)) }} تومان @endif
+        </dd></div>
+        <div><dt class="text-gray-400">تسویه مالک</dt><dd class="font-bold text-gray-700">{{ $application->reservation?->settlement?->statusLabel() ?? 'محاسبه نشده' }}</dd></div>
+    </dl>
+
+    @can('manage_rental_applications')
+    <div class="flex flex-wrap gap-2">
+        @if ($noteStatus === App\Enums\GuaranteeNoteStatus::NotReceived)
+            <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.receive', $application) }}" data-confirm="دریافت سفته از مشتری ثبت شود؟">@csrf
+                <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">ثبت دریافت سفته</button></form>
+        @endif
+        @if ($application->state === App\Enums\RentalApplicationState::Returned)
+            @if ($damageStatus['status'] === 'unpaid' && ! $noteStatus->isResolved())
+                <form method="POST" action="{{ route('admin.rental-applications.damage-payment.store', $application) }}" class="flex gap-2" data-confirm="پرداخت خسارت توسط مشتری ثبت شود؟">@csrf
+                    <input name="payment_reference" required maxlength="100" placeholder="شناسه پرداخت" dir="ltr" class="border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                    <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">ثبت پرداخت خسارت</button></form>
+                <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.transfer', $application) }}" data-confirm="مشتری خسارت را پرداخت نکرده است؛ سفته به مالک تحویل شود؟">@csrf
+                    <button class="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold px-4 py-2 rounded-xl">تحویل سفته به مالک</button></form>
+            @endif
+            @if ($noteStatus === App\Enums\GuaranteeNoteStatus::HeldByGamePek && in_array($damageStatus['status'], ['no_damage', 'paid'], true))
+                <form method="POST" action="{{ route('admin.rental-applications.guarantee-note.return', $application) }}" data-confirm="سفته به مشتری بازگردانده شود؟">@csrf
+                    <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">بازگرداندن سفته به مشتری</button></form>
+            @endif
+            @unless ($application->reservation?->settlement?->isCredited())
+                <form method="POST" action="{{ route('admin.rental-applications.settlement.finalize', $application) }}" data-confirm="سهم مالک به کیف پول او واریز شود؟">@csrf
+                    <button class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2 rounded-xl">واریز سهم مالک</button></form>
+            @endunless
+            @if ($closureReadiness['ready'] ?? false)
+                <form method="POST" action="{{ route('admin.rental-applications.close', $application) }}" data-confirm="اجاره بسته شود؟">@csrf
+                    <button class="bg-brandBlue text-white text-xs font-bold px-4 py-2 rounded-xl">بستن اجاره</button></form>
+            @endif
+        @endif
+    </div>
+    <p class="text-[11px] text-gray-400 mt-3 leading-6">سفته پول یا ودیعه نیست و در تسویه محاسبه نمی‌شود. هر اقدام پیش از ثبت، شرایط خود را در سرور بررسی می‌کند.</p>
+    @endcan
+</x-admin.panel>
+@endif
+
 {{-- ─── Finance, damage and closure: read-only facts ─────────────────── --}}
 @php
     $settlement = $application->reservation?->settlement;

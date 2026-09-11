@@ -4,28 +4,30 @@ namespace App\Services\Rental;
 
 use App\Enums\DeviceOwnership;
 use App\Enums\RentalApplicationState;
+use App\Models\Owner;
 use App\Models\RentalApplication;
 use App\Models\RentalReservation;
 use App\Models\RentalSettlement;
+use App\Models\RentalSettlementCredit;
 use App\Models\User;
 use App\Services\Audit\AuditLogger;
+use App\Services\Wallet\WalletService;
 use App\Support\Rental\SettlementSplit;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
- * The only writer of `rental_settlements`: calculates -- and only calculates --
- * the confirmed 35/65 split of one owner rental.
+ * The only writer of `rental_settlements` and `rental_settlement_credits`.
  *
- * WHAT THIS DELIBERATELY DOES NOT DO
+ * CONFIRMED: the split applies to the rental price only (delivery fee and the
+ * promissory note excluded); GamePek 35% rounded down, owner the remainder;
+ * the owner's share goes to the owner's wallet, once, after the settlement
+ * point (see finalize()). calculate() records the split and moves no money;
+ * finalize() is the only step that credits a wallet, through WalletService.
  *
- *  - It moves no money. WalletService is never called; no balance changes. The
- *    settlement trigger, payout timing beyond the confirmed "daily" intention,
- *    and the wallet a payout would land in are all undecided.
- *  - It never guesses the gross. WHICH amount is shared is undecided
- *    (config('rental.settlement.gross_basis')); while that is null this refuses
- *    and audits `settlement.policy_undefined`, exactly as the lifecycle refuses
- *    an undefined trigger.
+ *  - The gross basis comes from config('rental.settlement.gross_basis'); an
+ *    unset or unknown value is still refused and audited
+ *    (`settlement.policy_undefined`) rather than guessed.
  *  - It never nets damage, deposit, penalties or refunds against the split.
  *    None of those rules exists.
  *  - GamePek-owned devices have no owner, so no 35/65 split applies and none
@@ -41,6 +43,99 @@ class RentalSettlementService
 {
     /** @var list<string> The bases the code can compute. Choosing one is policy. */
     public const SUPPORTED_BASES = ['rental_total'];
+
+    public function __construct(
+        private WalletService $wallets,
+        private RentalClosureReadiness $readiness,
+    ) {}
+
+    /**
+     * Credit the owner's 65% to the owner's wallet -- exactly once.
+     *
+     * CONFIRMED settlement point: the customer's device is back, the return
+     * inspection exists, the owner's two-hour window is over, and the device
+     * is back with its owner. Only then. The calculation is recorded first (or
+     * reused), then WalletService -- the sole wallet writer -- credits it with
+     * the idempotency key "settlement:{reference}:owner", and a
+     * rental_settlement_credits row records which ledger entry paid it.
+     *
+     * Idempotent twice over: the settlement row is locked and an existing
+     * credit is returned; unique indexes on the credit row and the wallet
+     * idempotency key hold even if that check were bypassed.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function finalize(RentalApplication $application, User $actor): RentalSettlementCredit
+    {
+        if (! $this->readiness->settlementPrerequisitesMet($application->refresh())) {
+            AuditLogger::log(
+                action: 'settlement.finalize_denied',
+                resourceType: 'RentalApplication',
+                resourceId: $application->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: ['missing' => RentalClosureReadiness::missing($this->readiness->check($application))],
+                actor: $actor,
+            );
+
+            throw new \RuntimeException('پیش‌نیازهای تسویه این اجاره هنوز کامل نشده است.');
+        }
+
+        $settlement = $this->calculate($application, $actor);
+
+        return DB::transaction(function () use ($settlement, $actor) {
+            $locked = RentalSettlement::where('id', $settlement->id)->lockForUpdate()->firstOrFail();
+
+            $existing = RentalSettlementCredit::where('rental_settlement_id', $locked->id)->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
+            if ($locked->owner_share <= 0) {
+                throw new \RuntimeException('سهم مالک برای این اجاره صفر است و واریزی لازم نیست.');
+            }
+
+            $ownerUser = Owner::whereKey($locked->owner_id)->firstOrFail()->user()->firstOrFail();
+
+            $entry = $this->wallets->credit(
+                $ownerUser,
+                $locked->owner_share,
+                'rental_settlement',
+                'settlement:'.$locked->reference_number.':owner',
+                [
+                    'settlement_reference' => $locked->reference_number,
+                    'rental_application_id' => $locked->rental_application_id,
+                    'rental_reservation_id' => $locked->rental_reservation_id,
+                ],
+                $actor,
+            );
+
+            $credit = new RentalSettlementCredit;
+            $credit->rental_settlement_id = $locked->id;
+            $credit->wallet_transaction_id = $entry->id;
+            $credit->owner_user_id = $ownerUser->id;
+            $credit->amount = $locked->owner_share;
+            $credit->credited_by_user_id = $actor->id;
+            $credit->credited_at = now();
+            $credit->created_at = now();
+            $credit->save();
+
+            AuditLogger::log(
+                action: 'settlement.credited',
+                resourceType: 'RentalSettlement',
+                resourceId: $locked->id,
+                context: [
+                    'reference_number' => $locked->reference_number,
+                    'wallet_transaction_id' => $entry->id,
+                    'owner_user_id' => $ownerUser->id,
+                    'amount' => $locked->owner_share,
+                ],
+                actor: $actor,
+            );
+
+            return $credit;
+        });
+    }
 
     /**
      * Calculate and record the split for this application's rental.

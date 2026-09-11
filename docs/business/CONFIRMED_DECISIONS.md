@@ -111,6 +111,13 @@ Anything not listed in §1 is either in §4 (policy gate) or is not decided.
 | C-38 | The **owner has 2 hours after GamePek receives the device** to report a defect. After that GamePek carries no responsibility for that defect; disputes go through the contracts, receipts and evidence GamePek holds |
 | C-39 | **GamePek's expert determines the damage amount** when damage exists — no formula, taxonomy or pricing is defined |
 | C-40 | After the customer returns it, the device **eventually goes back from GamePek to the owner** |
+| C-41 | Settlement is calculated **only from the rental price**; the delivery fee and the promissory note are excluded |
+| C-42 | GamePek's 35% is **rounded down** to the Toman; the owner receives the exact remainder |
+| C-43 | The owner's share goes to the **Owner Wallet**, after: customer return, return inspection, the owner's 2-hour window, and the device's return to the owner. Calculated is **not** paid |
+| C-44 | GamePek collects **no cash deposit**; the customer gives a **promissory note** as guarantee. It is never wallet money and never part of settlement |
+| C-45 | No damage → the note is **returned to the customer** |
+| C-46 | Damage → the customer may **pay the assessed amount directly**; if paid, the note is returned |
+| C-47 | Damage not paid → the note is **handed to the loss-bearing owner**, who pursues it through the competent authorities. GamePek does not collect or prosecute it |
 
 > **Implemented** (see `docs/operations/OPERATIONS_AND_CUSTODY.md` §13–§14):
 > C-31, C-32, C-34, C-37, C-40 and the C-38 window's arithmetic, i.e. all four
@@ -167,7 +174,8 @@ this.**
 | C-17 | Device available again per operational state | **Partially implemented.** The operational domain now exists for one step only: a paid reservation opens an `owner_device_pickup` task in `rental_operations`, and `device_custody_transfers` records who physically holds the device. Inspection, delivery, customer return and owner return are NOT implemented, so a device never becomes available again through an operational path |
 | C-21 / C-22 | Admin-controlled multi-day discounts | Duration discount tiers exist in `config('rental.pricing.duration_discounts')` but are a **hardcoded placeholder**, not admin-editable and not owner-approved values |
 | C-23 | Selected game affects price | `RentalPricingService::quote()` accepts a `gameFee` parameter, but it is **always passed 0**; there is no game selection |
-| C-26 / C-27 / C-28 | 35/65 split, daily settlement | **Calculation implemented, no payout.** `SettlementSplit` applies 35/65 in whole Toman (GamePek share rounded down, owner gets the remainder — a technical rounding choice awaiting confirmation). `RentalSettlementService` records one immutable `calculated` row per returned owner rental, but **refuses while `rental.settlement.gross_basis` is null** — which amount the split applies to (rental total vs. extras, delivery fee, discount) is not decided. No settlement trigger, no daily run, no wallet movement exists |
+| C-26 / C-27 / C-28, C-41–C-43 | 35/65 split to the Owner Wallet | **Implemented.** Base = `reservation.rental_total` (rental price; excludes delivery fee and the note). `RentalSettlementService::finalize()` credits the owner once through `WalletService` after the C-43 settlement point; `rental_settlement_credits` separates credited from calculated. **Not implemented:** a scheduled *daily* run — finalization is a staff action per rental |
+| C-44 – C-47 | Promissory note lifecycle | **Implemented** as `guarantee_note_events` (received → returned to customer XOR transferred to owner), driven by the damage outcome. No legal wording, deadline or collection workflow |
 | C-29 | Wallet carries financial movement | **Backend now implemented** (`App\Services\Wallet\WalletService`, `wallets`, `wallet_transactions`) — persisted balance, immutable ledger, idempotent credit/debit. **Nothing calls it yet**: no settlement, payout, deposit, refund or damage-charge logic exists or is invented by it. The customer profile's wallet tab is still a separate, unconnected `localStorage` prototype |
 | C-30 | SMS on all lifecycle events | **No SMS is ever sent.** Templates are empty; the seam exists |
 | C-01 / C-02 | Tehran, zones 1–2 | `config('rental.search.cities')` is `['تهران']` — city is enforced, **zones are not modelled at all** |
