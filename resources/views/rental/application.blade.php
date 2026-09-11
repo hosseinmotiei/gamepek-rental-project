@@ -90,6 +90,11 @@
 @section('content')
 <main class="max-w-3xl mx-auto px-4 py-6 md:py-10" dir="rtl">
 
+    <a href="{{ route('rental.applications.index') }}"
+       class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-brandBlue mb-3 transition-colors">
+        <i class="fa-solid fa-arrow-right text-[10px]"></i> همه درخواست‌های اجاره من
+    </a>
+
     <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
         <div class="flex items-center gap-3">
             <div class="w-11 h-11 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0">
@@ -321,6 +326,26 @@
             @endforeach
         </ol>
     </section>
+
+    {{-- Shown once every step above is done and nothing is "current" anymore
+         -- today that only happens at Approved, since Active/Returned/Closed
+         are not yet reachable (B14). Reuses $application->state and
+         approved_at, which are already set by RentalChainOrchestrator::approve();
+         no new fact or workflow is introduced here. --}}
+    @if ($application->state === RentalApplicationState::Approved)
+        <div class="mb-5 flex items-start gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 px-5 py-4">
+            <i class="fa-solid fa-circle-check text-lg mt-0.5 shrink-0"></i>
+            <div class="text-xs md:text-sm leading-6">
+                <p class="font-bold mb-0.5">درخواست اجاره شما تأیید نهایی شد.</p>
+                @if ($application->approved_at)
+                    <p>
+                        تاریخ تأیید:
+                        {{ \App\Support\Rental\Jalali::formatLong($application->approved_at->format('Y-m-d')) }}
+                    </p>
+                @endif
+            </div>
+        </div>
+    @endif
 
     {{-- Chain history. Every transition is recorded, so the customer can see
          exactly where the request stands and how it got there. --}}
