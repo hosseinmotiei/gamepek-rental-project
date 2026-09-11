@@ -43,6 +43,18 @@
         @endif
     </div>
 
+    {{-- The one Rental-owned link into the customer's own rental journey
+         that this page offers -- Store's shared header/footer/mobile-nav
+         carry no rental-specific entry point (see the journey audit), so an
+         already-authenticated customer needs a way back to their dashboard
+         without it living in shared Store chrome. --}}
+    @auth
+    <a href="{{ route('rental.dashboard') }}"
+       class="mb-4 inline-flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-brandBlue transition-colors">
+        <i class="fa-solid fa-clipboard-list"></i> پیگیری درخواست‌های اجاره من
+    </a>
+    @endauth
+
     <div class="flex items-end gap-2 mb-6">
         <span class="text-3xl font-black text-gray-900">{{ persian_number($rental->dailyRate()) }}</span>
         <span class="text-sm text-gray-500 mb-1">تومان / روز</span>

@@ -16,6 +16,13 @@
         RentalApplicationState::Cancelled => 'bg-red-50 text-red-700',
         default => 'bg-blue-50 text-brandBlue',
     };
+
+    // View-layer wording only, matching rental/application.blade.php -- see
+    // its comment for why ReservationHeld's own label() is corrected here
+    // rather than in the enum.
+    $stateLabel = fn (RentalApplicationState $state) => $state === RentalApplicationState::ReservationHeld
+        ? 'انتخاب دستگاه ثبت شد'
+        : $state->label();
 @endphp
 
 @section('content')
@@ -57,7 +64,7 @@
                         <p class="text-xs text-gray-400 mt-0.5">{{ $application->created_at->diffForHumans() }}</p>
                     </div>
                     <span class="text-[11px] md:text-xs font-bold px-3 py-1 rounded-full {{ $badgeTone($application->state) }}">
-                        {{ $application->state->label() }}
+                        {{ $stateLabel($application->state) }}
                     </span>
                 </div>
 

@@ -51,14 +51,14 @@
             'icon' => 'fa-file-shield',
             'title' => 'ثبت و بررسی ضمانت',
             'done' => $guarantee?->isVerified() ?? false,
-            'status' => $guarantee?->state->value ?? 'ثبت نشده',
+            'status' => $guarantee?->state->label() ?? 'ثبت نشده',
         ],
         [
             'key' => 'contract',
             'icon' => 'fa-file-signature',
             'title' => 'قرارداد، پذیرش و امضا',
             'done' => $contract?->state->value === 'signed',
-            'status' => $contract?->state->value ?? 'صادر نشده',
+            'status' => $contract?->state->label() ?? 'صادر نشده',
         ],
         [
             'key' => 'approval',
@@ -85,6 +85,17 @@
         RentalApplicationState::Cancelled => 'bg-red-50 text-red-700',
         default => 'bg-blue-50 text-brandBlue',
     };
+
+    // View-layer wording only -- ReservationHeld's own label() ("رزرو ثبت
+    // شد") reads as "your reservation is registered", but the documented
+    // behaviour (RentalReservationService::recordSelection(), C-15/C-16) is
+    // that nothing is held or blocked yet: only the product/date choice is
+    // recorded, and a real reservation row is created only after payment.
+    // Corrected here, not in the enum -- state() and its stored value are
+    // untouched.
+    $stateLabel = fn (RentalApplicationState $state) => $state === RentalApplicationState::ReservationHeld
+        ? 'انتخاب دستگاه ثبت شد'
+        : $state->label();
 @endphp
 
 @section('content')
@@ -106,7 +117,7 @@
             </div>
         </div>
         <span class="text-[11px] md:text-xs font-bold px-3 py-1.5 rounded-full {{ $badgeTone }}">
-            {{ $application->state->label() }}
+            {{ $stateLabel($application->state) }}
         </span>
     </div>
 
@@ -361,7 +372,7 @@
                 <div class="flex items-center justify-between gap-3 text-xs md:text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
                     <span class="flex items-center gap-2 text-gray-600">
                         <i class="fa-solid fa-circle text-[6px] text-brandBlue"></i>
-                        {{ \App\Enums\RentalApplicationState::from($transition->to_state)->label() }}
+                        {{ $stateLabel(RentalApplicationState::from($transition->to_state)) }}
                     </span>
                     <span class="text-[11px] text-gray-400 shrink-0" dir="ltr">
                         {{ \App\Support\Rental\Jalali::formatLong($transition->created_at->format('Y-m-d')) }}

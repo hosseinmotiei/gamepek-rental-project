@@ -66,7 +66,10 @@
         class="rental-reserve-btn w-full bg-brandBlue text-white font-bold py-3.5 rounded-xl hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20 text-sm flex justify-center items-center gap-2">
     <i class="fa-solid fa-calendar-check"></i> ادامه رزرو
 </button>
-<p class="mt-2 text-[10px] text-gray-400 text-center">ودیعه هنگام تحویل دریافت و پس از بازگشت دستگاه عودت می‌شود.</p>
+{{-- No delivery/return workflow exists yet, so this must not promise a
+     collection or refund timeline -- only that nothing is charged now,
+     which the reservation flow already guarantees (C-15/C-16). --}}
+<p class="mt-2 text-[10px] text-gray-400 text-center">ودیعه در این مرحله دریافت نمی‌شود.</p>
 {{-- Online reservation is live: the CTA opens an application and reserves
      into it (see rental-panel.blade.php). --}}
 @else

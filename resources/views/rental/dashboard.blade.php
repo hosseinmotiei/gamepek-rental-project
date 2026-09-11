@@ -18,6 +18,13 @@
         default => 'bg-blue-50 text-brandBlue',
     };
 
+    // View-layer wording only, matching rental/application.blade.php -- see
+    // its comment for why ReservationHeld's own label() is corrected here
+    // rather than in the enum.
+    $stateLabel = fn (RentalApplicationState $state) => $state === RentalApplicationState::ReservationHeld
+        ? 'انتخاب دستگاه ثبت شد'
+        : $state->label();
+
     $identityVerified = $identity?->isVerified() ?? false;
     $recent = $applications->where('id', '!=', $active?->id)->take(5);
 @endphp
@@ -75,7 +82,7 @@
                     درخواست جاری
                 </h2>
                 <span class="text-[11px] md:text-xs font-bold px-3 py-1 rounded-full {{ $badgeTone($active->state) }}">
-                    {{ $active->state->label() }}
+                    {{ $stateLabel($active->state) }}
                 </span>
             </header>
 
@@ -153,7 +160,7 @@
                             <p class="text-[11px] text-gray-400 mt-0.5" dir="ltr">{{ $application->application_number }}</p>
                         </div>
                         <span class="text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0 {{ $badgeTone($application->state) }}">
-                            {{ $application->state->label() }}
+                            {{ $stateLabel($application->state) }}
                         </span>
                     </a>
                 @endforeach
