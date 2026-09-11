@@ -94,10 +94,13 @@ class PardakhtNovinGateway
 
         $data = $response->json() ?? [];
 
+        // Never the body: a bank response can carry a session token, a
+        // reference number or card data. Status and presence are enough.
         Log::info('PardakhtNovinGateway::requestToken response', [
             'order_id' => $orderId,
             'http_status' => $response->status(),
-            'response' => $data,
+            'status' => array_find_ci($data, 'Status'),
+            'has_token' => ! empty(array_find_ci($data, 'Token')),
         ]);
 
         $status = array_find_ci($data, 'Status');
@@ -151,8 +154,9 @@ class PardakhtNovinGateway
                 ->asJson()
                 ->post(self::CONFIRM_URL, $payload);
         } catch (\Throwable $e) {
+            // The token is the payment's bank handle: presence only.
             Log::error('PardakhtNovinGateway::confirm transport failure', [
-                'token' => $token,
+                'has_token' => $token !== '',
                 'exception' => $e->getMessage(),
             ]);
 
@@ -167,10 +171,12 @@ class PardakhtNovinGateway
 
         $data = $response->json() ?? [];
 
+        // Never the body or the token: Confirm's response carries the RRN and
+        // may carry card data, and the token is the payment's bank handle.
         Log::info('PardakhtNovinGateway::confirm response', [
-            'token' => $token,
             'http_status' => $response->status(),
-            'response' => $data,
+            'status' => array_find_ci($data, 'Status'),
+            'has_rrn' => ! empty(array_find_ci($data, 'RRN')),
         ]);
 
         $status = array_find_ci($data, 'Status');
@@ -222,8 +228,9 @@ class PardakhtNovinGateway
                 ->asJson()
                 ->post(self::REVERSE_URL, $payload);
         } catch (\Throwable $e) {
+            // The token is the payment's bank handle: presence only.
             Log::error('PardakhtNovinGateway::reverse transport failure', [
-                'token' => $token,
+                'has_token' => $token !== '',
                 'exception' => $e->getMessage(),
             ]);
 
@@ -239,9 +246,8 @@ class PardakhtNovinGateway
         $data = $response->json() ?? [];
 
         Log::info('PardakhtNovinGateway::reverse response', [
-            'token' => $token,
             'http_status' => $response->status(),
-            'response' => $data,
+            'status' => array_find_ci($data, 'Status'),
         ]);
 
         $status = array_find_ci($data, 'Status');

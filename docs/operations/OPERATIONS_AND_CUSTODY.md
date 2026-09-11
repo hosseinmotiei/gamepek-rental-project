@@ -803,6 +803,54 @@ disagreement, and no date invented for it); damage money taken after the note
 went to the owner; any wallet entry claiming to be a late fee, which no
 confirmed rule authorises.
 
+## 22. Pre-launch audit: findings closed and deployment prerequisites
+
+### 22.1 Closed in the pre-launch audit
+
+- **Identity media and the framework file route.** The `local` disk had
+  `serve => true`, which registers a public `storage/{path}` route over
+  `storage/app/private` -- the root the `verification` disk (national-ID images,
+  selfies) lives inside. The installed `ServeFile` does demand a signature, so
+  nothing was exposed; but a signature is a bearer token (VID-04), and this route
+  checks no ownership and audits nothing. Nothing used it. It is off; identity
+  media is served only by `verification.media.show`.
+- **Bank data in logs.** Pardakht Novin request/confirm/reverse logged the full
+  response body and the session token at INFO/ERROR. Logs now carry the HTTP
+  status, the gateway's status code and presence flags only.
+- **Signature evidence.** `contract_signatures` had no immutability guard. Any
+  change to the evidence columns, and any delete, now throws; `verified_at`, the
+  one column the flow fills later, still can be set.
+- **Callback lookup.** Every public payment callback runs
+  `WHERE gateway = ? AND authority = ?` and only `gateway` was indexed. A
+  composite index now serves it (not unique: an existing duplicate would fail
+  the migration mid-deploy).
+
+### 22.2 Deployment prerequisites (manual; not automated here)
+
+`deploy.sh` is forward-only and safe: maintenance mode, `composer install
+--no-dev`, `migrate --force`, `optimize`, `storage:link`. It never runs
+`key:generate`, a seeder, `migrate:fresh`, `db:wipe` or `refresh`. Before the
+first production run, and on every environment:
+
+1. **Own database.** `DB_DATABASE` must name the Rental database, never the
+   Store's. The two applications share nothing.
+2. **`APP_ENV=production`, `APP_DEBUG=false`.** `.env.example` ships the local
+   values. Production mode is what disables the mock gateway, the fake
+   providers, the `log` SMS driver, OTP display and model strict-mode leniency.
+3. **`APP_KEY` generated once and never regenerated.** It keys the OTP HMAC,
+   the contract signature seal and encrypted columns (sayad id). Regenerating it
+   on an existing install breaks every sealed signature and encrypted value.
+   `deploy.sh` never touches it; do not add it.
+4. **`SESSION_SECURE_COOKIE=true`** behind HTTPS.
+5. **Seeding** is blocked in production unless `ALLOW_PRODUCTION_SEED=true`;
+   set it only for the first seed, then remove it. The seeded super-admin is
+   OTP-only (`ADMIN_MOBILE`); the password dev-admin exists only in
+   local/testing.
+6. **Payment:** leave `PAYMENT_GATEWAY` pointing at a configured gateway. With
+   no credentials every payment attempt refuses before any network call.
+7. **Backups** of the Rental database before each `migrate --force`: the
+   migrations are additive, but no rollback plan replaces a backup.
+
 ## 21. Payment and SMS integration boundary
 
 ### 21.1 Payment -- what was already right

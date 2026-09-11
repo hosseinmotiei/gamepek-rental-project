@@ -9,7 +9,14 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // OFF on purpose. `serve` registers a public `storage/{path}` route
+            // that hands out ANY file under storage/app/private -- identity
+            // media included, since the `verification` disk lives inside this
+            // root -- to whoever holds a valid signature. A signature is a
+            // bearer token (VID-04), so identity media is served only through
+            // verification.media.show, which also checks ownership and audits
+            // every read. Nothing in the app uses this route.
+            'serve' => false,
             'throw' => false,
         ],
 

@@ -35,7 +35,7 @@ matrix and a manual test scenario. Path-scoped rules live in
 A complete, audited, state-machine-driven **rental chain exists and works**:
 reservations, identity/bank/guarantee verification, payment, contract
 generation, signing, and admin approval are all implemented, and the
-repository has a **Feature suite of 625 test methods**.
+repository has a **Feature suite of 630 test methods**.
 
 | Area | Status |
 |---|---|
@@ -733,7 +733,7 @@ Note: `docs/rental-flow-fa.md` describes the **architecture as built**, which in
 several places differs from confirmed business policy (reservation ordering,
 KYC gating, device units). Its header now carries that warning and links to the
 confirmed-decisions document. Its test counts are kept in step with the
-verified Feature run (`625 tests, 2920 assertions`).
+verified Feature run (`630 tests, 2934 assertions`).
 
 ---
 
