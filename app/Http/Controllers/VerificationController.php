@@ -25,17 +25,43 @@ class VerificationController extends Controller
         private VerificationMediaService $mediaService,
     ) {}
 
+    /**
+     * The identity-facing media kinds this page exposes.
+     *
+     * `handover_video` and `return_video` are also valid `storeMedia()` kinds,
+     * but they belong to the device custody workflow (owner/device domain),
+     * which has no customer-facing attachment point yet -- see CLAUDE.md
+     * known issue 11. Listing them here would invite an upload with nowhere
+     * for it to go, so the KYC page only ever shows the identity-relevant
+     * kinds.
+     */
+    private const IDENTITY_MEDIA_KINDS = ['national_card', 'selfie', 'liveness_video'];
+
     public function show(Request $request)
     {
         $user = $request->user();
 
         // Model::shouldBeStrict() enables preventLazyLoading outside
         // production, so every relation a view touches must be loaded here.
-        $user->loadMissing(['identity.verifications', 'bankAccounts']);
+        $user->loadMissing(['identity.verifications', 'bankAccounts', 'verificationMedia']);
+
+        // The most recent upload per kind -- a re-upload replaces what the
+        // customer sees here, it does not delete the earlier row.
+        $latestMediaByKind = $user->verificationMedia
+            ->whereIn('kind', self::IDENTITY_MEDIA_KINDS)
+            ->sortByDesc('id')
+            ->unique('kind')
+            ->keyBy('kind')
+            ->map(fn (VerificationMedia $media) => [
+                'media' => $media,
+                'url' => $media->isPurged() ? null : $this->mediaService->temporaryUrl($media),
+            ]);
 
         return view('verification.index', [
             'user' => $user,
             'identity' => $user->identity,
+            'mediaKinds' => self::IDENTITY_MEDIA_KINDS,
+            'latestMediaByKind' => $latestMediaByKind,
         ]);
     }
 

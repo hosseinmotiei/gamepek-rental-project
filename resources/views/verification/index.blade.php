@@ -2,6 +2,17 @@
 
 @section('title', 'گیم‌پک | احراز هویت')
 
+@php
+    use App\Enums\IdentityState;
+    use App\Enums\MediaState;
+
+    $mediaLabels = [
+        'national_card' => 'تصویر کارت ملی',
+        'selfie' => 'تصویر سلفی همراه با کارت ملی',
+        'liveness_video' => 'ویدئوی احراز زنده بودن',
+    ];
+@endphp
+
 @section('content')
 <main class="max-w-3xl mx-auto px-4 py-6 md:py-10" dir="rtl">
 
@@ -37,6 +48,16 @@
         </header>
 
         <div class="p-5">
+            @if ($identity && $identity->state === IdentityState::Rejected)
+                <div class="mb-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs md:text-sm px-4 py-3">
+                    <p class="font-bold mb-1">احراز هویت شما رد شده است.</p>
+                    @if ($identity->rejection_reason)
+                        <p>دلیل رد: {{ $identity->rejection_reason }}</p>
+                    @endif
+                    <p class="mt-1">می‌توانید اطلاعات هویتی را دوباره ثبت کنید.</p>
+                </div>
+            @endif
+
             @if ($identity && $identity->national_code_mask)
                 <div class="flex items-center justify-between text-xs md:text-sm mb-4">
                     <span class="text-gray-500">کد ملی ثبت‌شده</span>
@@ -100,6 +121,57 @@
             </div>
         </section>
     @endif
+
+    {{-- ─── Identity documents ───────────────────────────────────────── --}}
+    <section class="bg-white rounded-2xl border border-gray-100 shadow-sm mb-5">
+        <header class="px-5 py-4 border-b border-gray-100">
+            <h2 class="text-sm md:text-base font-bold text-gray-800">مدارک احراز هویت</h2>
+        </header>
+
+        <div class="p-5 space-y-5">
+            @foreach ($mediaKinds as $kind)
+                @php
+                    $entry = $latestMediaByKind[$kind] ?? null;
+                    $media = $entry['media'] ?? null;
+                    $accept = implode(',', config('verification.media.allowed_mimes.'.$kind, []));
+                    $maxMb = round((config('verification.media.max_size_kb.'.$kind, 0)) / 1024, 1);
+                @endphp
+                <div class="border border-gray-100 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs md:text-sm font-bold text-gray-800">{{ $mediaLabels[$kind] }}</span>
+                        <span class="text-[11px] md:text-xs font-bold px-3 py-1 rounded-full
+                            {{ $media?->state === MediaState::Ready ? 'bg-emerald-50 text-emerald-700' : ($media?->state === MediaState::Rejected ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700') }}">
+                            {{ $media?->state->label() ?? 'بارگذاری نشده' }}
+                        </span>
+                    </div>
+
+                    @if ($media?->state === MediaState::Rejected && $media->rejection_reason)
+                        <p class="text-xs text-red-600 mb-2">دلیل رد: {{ $media->rejection_reason }}</p>
+                    @endif
+
+                    @if ($entry['url'] ?? null)
+                        <a href="{{ $entry['url'] }}" target="_blank" rel="noopener"
+                           class="inline-block text-xs text-brandBlue font-bold hover:underline mb-3">
+                            مشاهده فایل بارگذاری‌شده
+                        </a>
+                    @endif
+
+                    <form method="POST" action="{{ route('verification.media.store') }}" enctype="multipart/form-data"
+                          class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        @csrf
+                        <input type="hidden" name="kind" value="{{ $kind }}">
+                        <input type="file" name="file" accept="{{ $accept }}"
+                               class="flex-1 text-xs md:text-sm border border-gray-200 rounded-xl px-3 py-2">
+                        <button type="submit"
+                                class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl px-4 py-2 whitespace-nowrap">
+                            {{ $media ? 'بارگذاری مجدد' : 'بارگذاری' }}
+                        </button>
+                    </form>
+                    <p class="text-[11px] text-gray-400 mt-1">حداکثر حجم مجاز: {{ $maxMb }} مگابایت</p>
+                </div>
+            @endforeach
+        </div>
+    </section>
 
     {{-- ─── Bank accounts ────────────────────────────────────────────── --}}
     <section class="bg-white rounded-2xl border border-gray-100 shadow-sm">
