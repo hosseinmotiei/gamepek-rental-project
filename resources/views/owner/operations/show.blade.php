@@ -7,6 +7,10 @@
     use App\Enums\CustodyTransferState;
 
     $transfer = $operation->custodyTransfer;
+
+    // The owner is party to two legs: the pickup from them and the return to
+    // them. Only the wording differs; the confirmation means the same thing.
+    $isReturnToOwner = $operation->type === App\Enums\RentalOperationType::OwnerReturn;
 @endphp
 
 <div class="max-w-2xl mx-auto px-4 py-8">
@@ -73,8 +77,11 @@
         @if ($transfer && $transfer->state === CustodyTransferState::Transferred)
             <form method="POST" action="{{ route('owner.operations.acknowledge', $operation) }}" class="mt-5">
                 @csrf
-                <button type="submit" data-confirm="تحویل این دستگاه به گیم‌پک را تأیید می‌کنید؟"
-                        class="w-full bg-brandBlue text-white rounded-xl px-4 py-3 text-sm font-bold">تأیید تحویل دستگاه</button>
+                <button type="submit"
+                        data-confirm="{{ $isReturnToOwner ? 'دریافت این دستگاه از گیم‌پک را تأیید می‌کنید؟' : 'تحویل این دستگاه به گیم‌پک را تأیید می‌کنید؟' }}"
+                        class="w-full bg-brandBlue text-white rounded-xl px-4 py-3 text-sm font-bold">
+                    {{ $isReturnToOwner ? 'تأیید دریافت دستگاه' : 'تأیید تحویل دستگاه' }}
+                </button>
             </form>
         @endif
     </div>

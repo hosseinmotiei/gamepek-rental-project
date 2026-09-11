@@ -2,6 +2,7 @@
 
 namespace App\Services\Rental;
 
+use App\Enums\CustodyActor;
 use App\Enums\DeviceOwnership;
 use App\Enums\RentalApplicationState;
 use App\Enums\RentalOperationState;
@@ -122,6 +123,41 @@ class RentalOperationService
         }
 
         return $this->openOperation($reservation, RentalOperationType::CustomerReturn, $actor);
+    }
+
+    /**
+     * Open the task for handing a returned console back to its owner (C-40).
+     *
+     * Only once the rental is Returned -- before that the device is with the
+     * customer, and there is no customer -> owner leg. Only for an owner's
+     * device: GamePek's own stock is already where it belongs. The custody
+     * service re-checks all of this, plus the custody itself, when the leg is
+     * opened and recorded.
+     *
+     * Nothing here waits on, or is gated by, the owner's two-hour defect
+     * window. No rule links the two and none is invented.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function openOwnerReturnForReservation(RentalReservation $reservation, User $actor): RentalOperation
+    {
+        $application = $reservation->application()->firstOrFail();
+
+        if ($application->state !== RentalApplicationState::Returned) {
+            throw new \RuntimeException('بازگرداندن دستگاه به مالک فقط پس از دریافت دستگاه از مشتری ممکن است.');
+        }
+
+        $device = $reservation->device()->first();
+
+        if ($device === null) {
+            throw new \RuntimeException('برای این رزرو دستگاهی ثبت نشده است.');
+        }
+
+        if ($device->ownership !== DeviceOwnership::Owner || $device->owner_id === null) {
+            throw new \RuntimeException('این دستگاه متعلق به گیم‌پک است و بازگرداندن به مالک ندارد.');
+        }
+
+        return $this->openOperation($reservation, RentalOperationType::OwnerReturn, $actor);
     }
 
     /**
@@ -316,7 +352,15 @@ class RentalOperationService
             $reservation->device_id = $device->id;
             $reservation->save();
 
-            $target = $device->isOwnedByGamePek()
+            // No pickup is needed when GamePek already holds the device --
+            // either it is GamePek's own stock, or it is an owner's console
+            // that GamePek still has (e.g. kept after an earlier rental's
+            // return instead of going back to the owner). Scheduling a pickup
+            // then would ask the owner for something they do not have, and
+            // completing it would record a handover nobody made.
+            $custody = $device->currentCustody();
+
+            $target = ($device->isOwnedByGamePek() || $custody === CustodyActor::GamePek)
                 ? RentalOperationState::NotRequired
                 : RentalOperationState::Scheduled;
 
@@ -344,6 +388,7 @@ class RentalOperationService
                     'device_serial_mask' => $device->maskedSerial(),
                     'ownership' => $device->ownership->value,
                     'owner_id' => $device->owner_id,
+                    'custody' => $custody->value,
                     'to' => $target->value,
                 ],
                 actor: $actor,

@@ -102,24 +102,52 @@ class DeviceCustodyTransfer extends Model
     public const OWNER_DEFECT_REPORT_WINDOW_HOURS = 2;
 
     /**
-     * When the owner's defect-report window closes, or null when this transfer
-     * never put the device in GamePek's hands (a delivery to the customer
-     * starts no such window) or possession has not moved yet.
+     * When the owner's defect-report window closes, or null when there is no
+     * window to speak of.
+     *
+     * SOURCE TIMESTAMP: `transferred_at` of the customer -> GamePek leg, i.e.
+     * the moment GamePek recorded receiving the device back from the customer.
+     * Only that leg starts the window (see
+     * CustodyTransferType::startsOwnerDefectReportWindow()); a delivery, an
+     * owner pickup and a return to the owner all answer null.
+     *
+     * Null also when possession has not moved yet (`transferred_at` is null --
+     * the CHECK constraint guarantees it is set once possession moved), so a
+     * window can never be computed from a handover that has not happened.
+     *
+     * The deadline is an absolute instant: Carbon carries the application
+     * timezone, so adding two hours is unaffected by how it is later rendered.
      */
     public function ownerDefectReportDeadline(): ?Carbon
     {
-        if (! $this->transfer_type->endsInGamePekCustody() || $this->transferred_at === null) {
+        if (! $this->transfer_type->startsOwnerDefectReportWindow()
+            || ! $this->isPossessionMoved()
+            || $this->transferred_at === null) {
             return null;
         }
 
         return $this->transferred_at->copy()->addHours(self::OWNER_DEFECT_REPORT_WINDOW_HOURS);
     }
 
+    /**
+     * Is $at still inside the window?
+     *
+     * The window is half-open: [transferred_at, deadline). The deadline instant
+     * itself is outside -- "two hours after" has elapsed at that moment. An
+     * instant before GamePek received the device is also outside: nothing
+     * could be reported about a receipt that had not happened.
+     */
     public function isWithinOwnerDefectReportWindow(?Carbon $at = null): bool
     {
         $deadline = $this->ownerDefectReportDeadline();
 
-        return $deadline !== null && ($at ?? now())->lessThan($deadline);
+        if ($deadline === null) {
+            return false;
+        }
+
+        $at ??= now();
+
+        return $at->greaterThanOrEqualTo($this->transferred_at) && $at->lessThan($deadline);
     }
 
     /** Has possession actually moved? `requested` means it has not. */

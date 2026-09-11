@@ -7,6 +7,7 @@ use App\Enums\DeviceOwnership;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use App\Models\DeviceCustodyTransfer;
+use App\Models\RentalInspection;
 use App\Models\RentalOperation;
 use Illuminate\Support\Collection;
 
@@ -47,6 +48,12 @@ class OperationCustodyReconciler
     /** Delivery completed, but the device is not in the customer's hands. */
     public const COMPLETED_BUT_CUSTODY_NOT_CUSTOMER = 'completed_but_custody_not_customer';
 
+    /** Owner return completed, but the device is not back with its owner. */
+    public const COMPLETED_BUT_CUSTODY_NOT_OWNER = 'completed_but_custody_not_owner';
+
+    /** An inspection whose references disagree with its operation or handover. */
+    public const INSPECTION_REFERENCE_MISMATCH = 'inspection_reference_mismatch';
+
     /** The completed task and its transfer describe different legs. */
     public const TRANSFER_TYPE_MISMATCH = 'transfer_type_mismatch';
 
@@ -71,6 +78,7 @@ class OperationCustodyReconciler
         return collect()
             ->merge($this->completedOperationFindings())
             ->merge($this->transferFindings())
+            ->merge($this->inspectionFindings())
             // A device mismatch is visible from both sides; report it once.
             ->unique(fn (array $f) => $f['code'].'|'.$f['operation_id'].'|'.$f['transfer_reference'])
             ->values();
@@ -88,6 +96,8 @@ class OperationCustodyReconciler
             self::COMPLETED_WITHOUT_DEVICE => 'عملیات تکمیل شده اما دستگاهی مشخص نیست',
             self::COMPLETED_BUT_CUSTODY_NOT_GAMEPEK => 'عملیات تکمیل شده اما دستگاه در اختیار گیم‌پک نیست',
             self::COMPLETED_BUT_CUSTODY_NOT_CUSTOMER => 'تحویل تکمیل شده اما دستگاه در اختیار مشتری نیست',
+            self::COMPLETED_BUT_CUSTODY_NOT_OWNER => 'بازگرداندن به مالک تکمیل شده اما دستگاه در اختیار مالک نیست',
+            self::INSPECTION_REFERENCE_MISMATCH => 'ارجاعات بازرسی با عملیات یا سابقه تحویل آن هم‌خوان نیست',
             self::TRANSFER_TYPE_MISMATCH => 'نوع سابقه تحویل با نوع عملیات یکسان نیست',
             self::DEVICE_MISMATCH => 'دستگاه عملیات با دستگاه سابقه تحویل یکسان نیست',
             self::TRANSFERRED_BUT_NOT_COMPLETED => 'تحویل ثبت شده اما عملیات بسته نشده است',
@@ -153,9 +163,11 @@ class OperationCustodyReconciler
 
             if ($expectsHandover && ! $supersededByLaterLeg && $device->currentCustody() !== $leg->destination()) {
                 $findings[] = $this->finding(
-                    $leg->destination() === CustodyActor::Customer
-                        ? self::COMPLETED_BUT_CUSTODY_NOT_CUSTOMER
-                        : self::COMPLETED_BUT_CUSTODY_NOT_GAMEPEK,
+                    match ($leg->destination()) {
+                        CustodyActor::Customer => self::COMPLETED_BUT_CUSTODY_NOT_CUSTOMER,
+                        CustodyActor::Owner => self::COMPLETED_BUT_CUSTODY_NOT_OWNER,
+                        CustodyActor::GamePek => self::COMPLETED_BUT_CUSTODY_NOT_GAMEPEK,
+                    },
                     $operation,
                     $transfer,
                     'دستگاه پس از تکمیل این عملیات باید در اختیار '
@@ -229,6 +241,44 @@ class OperationCustodyReconciler
             }
 
             return $findings;
+        });
+    }
+
+    /**
+     * Every inspection must describe the same rental, console and handover as
+     * the operation it hangs off, at the stage that operation implies.
+     * RentalInspectionService derives all of these; a mismatch means a row was
+     * written or altered outside it.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function inspectionFindings(): Collection
+    {
+        $inspections = RentalInspection::with(['operation.custodyTransfer'])->get();
+
+        return $inspections->flatMap(function (RentalInspection $inspection) {
+            $operation = $inspection->operation;
+            $transfer = $operation?->custodyTransfer;
+
+            $consistent = $operation !== null
+                && $transfer !== null
+                && $inspection->device_custody_transfer_id === $transfer->id
+                && $inspection->device_id === $operation->device_id
+                && $inspection->device_id === $transfer->device_id
+                && $inspection->rental_reservation_id === $operation->rental_reservation_id
+                && $inspection->rental_application_id === $operation->rental_application_id
+                && $inspection->stage === $operation->type->inspectionStage();
+
+            if ($consistent) {
+                return [];
+            }
+
+            return [$this->finding(
+                self::INSPECTION_REFERENCE_MISMATCH,
+                $operation,
+                $transfer,
+                'بازرسی شماره '.$inspection->id.' به دستگاه، رزرو، سابقه تحویل یا مرحله‌ای غیر از عملیات خود اشاره می‌کند.'
+            )];
         });
     }
 

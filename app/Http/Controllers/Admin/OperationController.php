@@ -13,6 +13,7 @@ use App\Models\RentalReservation;
 use App\Services\Audit\AuditLogger;
 use App\Services\Rental\DeviceCustodyService;
 use App\Services\Rental\OperationCustodyReconciler;
+use App\Services\Rental\RentalInspectionService;
 use App\Services\Rental\RentalOperationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,9 +32,9 @@ use Illuminate\Support\Facades\DB;
  * source or destination, actor, owner, timestamps. A device may be NAMED, and
  * the service decides whether that device is allowed.
  *
- * Scope is deliberately narrow: list, inspect, attach a device, schedule,
- * start, record receipt, mark failed. Inspection, delivery, return and
- * settlement screens belong to later phases.
+ * Scope: list, view, attach a device, schedule, start, record a handover for
+ * any of the four legs, record inspection evidence, mark failed. Damage
+ * valuation and settlement are undecided and have no action here.
  */
 class OperationController extends Controller
 {
@@ -68,6 +69,7 @@ class OperationController extends Controller
             'device.product', 'owner.user', 'application.user',
             'reservation', 'assignedTo', 'completedBy',
             'custodyTransfer.fromOwner.user',
+            'inspections.inspector',
         ]);
 
         // Candidate devices for an unallocated task. This is a LIST for a human
@@ -116,6 +118,11 @@ class OperationController extends Controller
                 if ($operation->custodyTransfer) {
                     $q->orWhere(fn ($q) => $q->where('resource_type', 'DeviceCustodyTransfer')
                         ->where('resource_id', $operation->custodyTransfer->id));
+                }
+
+                if ($operation->inspections->isNotEmpty()) {
+                    $q->orWhere(fn ($q) => $q->where('resource_type', 'RentalInspection')
+                        ->whereIn('resource_id', $operation->inspections->pluck('id')));
                 }
             })
             ->orderByDesc('occurred_at')
@@ -205,6 +212,7 @@ class OperationController extends Controller
                     RentalOperationType::OwnerDevicePickup => $this->custody->requestFromOwner($operation, $request->user()),
                     RentalOperationType::CustomerDelivery => $this->custody->requestDeliveryToCustomer($operation, $request->user()),
                     RentalOperationType::CustomerReturn => $this->custody->requestReturnFromCustomer($operation, $request->user()),
+                    RentalOperationType::OwnerReturn => $this->custody->requestReturnToOwner($operation, $request->user()),
                 };
             });
         } catch (\RuntimeException $e) {
@@ -295,12 +303,64 @@ class OperationController extends Controller
                 RentalOperationType::OwnerDevicePickup => $this->custody->recordHandoverToGamePek($operation, $request->user(), $notes),
                 RentalOperationType::CustomerDelivery => $this->custody->recordDeliveryToCustomer($operation, $request->user(), $notes),
                 RentalOperationType::CustomerReturn => $this->custody->recordReturnToGamePek($operation, $request->user(), $notes),
+                RentalOperationType::OwnerReturn => $this->custody->recordReturnToOwner($operation, $request->user(), $notes),
             };
         } catch (\RuntimeException $e) {
             return back()->with('error', $e->getMessage());
         }
 
         return back()->with('success', 'تحویل دستگاه ثبت شد و عملیات تکمیل شد.');
+    }
+
+    /**
+     * Open the task for handing a returned console back to its owner (C-40).
+     *
+     * Staff-only, like every other operation opener. The service refuses it
+     * unless the rental is Returned and the device is an owner's.
+     */
+    public function openOwnerReturn(Request $request, RentalApplication $rentalApplication)
+    {
+        abort_if(! $request->user()->can('manage_operations'), 403);
+
+        $reservation = $rentalApplication->reservation()->first();
+
+        if ($reservation === null) {
+            return back()->with('error', 'برای این درخواست رزروی ثبت نشده است.');
+        }
+
+        try {
+            $operation = $this->operations->openOwnerReturnForReservation($reservation, $request->user());
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return redirect()
+            ->route('admin.operations.show', $operation)
+            ->with('success', 'عملیات بازگرداندن دستگاه به مالک ایجاد شد.');
+    }
+
+    /**
+     * Record condition evidence against a delivery or return handover.
+     *
+     * Only `findings` is accepted. Device, rental, handover, stage and
+     * inspector are all derived server-side from the operation in the URL,
+     * so posting any of them does nothing.
+     */
+    public function recordInspection(Request $request, RentalOperation $operation, RentalInspectionService $inspections)
+    {
+        abort_if(! $request->user()->can('manage_operations'), 403);
+
+        $data = $request->validate([
+            'findings' => ['required', 'string', 'max:2000'],
+        ], ['findings.required' => 'ثبت شرح بازرسی الزامی است.']);
+
+        try {
+            $inspections->record($operation, $request->user(), $data['findings']);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'بازرسی دستگاه ثبت شد.');
     }
 
     /**

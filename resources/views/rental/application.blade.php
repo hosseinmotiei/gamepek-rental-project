@@ -403,6 +403,11 @@
 
             <div class="p-5 space-y-3 text-xs md:text-sm">
                 @if ($delivery)
+                    @if ($delivery->state === App\Enums\RentalOperationState::Completed)
+                        <p class="text-green-700 bg-green-50 border border-green-100 rounded-xl px-3 py-2">
+                            <i class="fa-solid fa-circle-check ml-1"></i> دستگاه به شما تحویل داده شد.
+                        </p>
+                    @endif
                     <div class="flex items-center justify-between gap-3">
                         <span class="text-gray-500">وضعیت تحویل به شما</span>
                         <span class="font-bold text-gray-800">{{ $delivery->state->label() }}</span>
@@ -428,6 +433,11 @@
                 @endif
 
                 @if ($returnTask)
+                    @if ($returnTask->state === App\Enums\RentalOperationState::Completed)
+                        <p class="text-green-700 bg-green-50 border border-green-100 rounded-xl px-3 py-2 mt-3">
+                            <i class="fa-solid fa-circle-check ml-1"></i> دستگاه توسط گیم‌پک از شما دریافت شد.
+                        </p>
+                    @endif
                     <div class="flex items-center justify-between gap-3 border-t border-gray-50 pt-3">
                         <span class="text-gray-500">وضعیت بازگشت دستگاه</span>
                         <span class="font-bold text-gray-800">{{ $returnTask->state->label() }}</span>

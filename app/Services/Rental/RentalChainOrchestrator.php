@@ -136,12 +136,20 @@ class RentalChainOrchestrator
      */
     public function nextState(RentalApplication $application): RentalApplicationState
     {
-        // Approved is a human decision, not a derived rung. Without this an
-        // ordinary advance() -- the customer merely opening their application
-        // page -- would re-derive AwaitingFinalApproval from the signed
-        // contract and silently revoke an admin's approval.
-        if ($application->state === RentalApplicationState::Approved) {
-            return RentalApplicationState::Approved;
+        // Approved is a human decision, not a derived rung, and everything
+        // after it (Active, Returned) is produced only by a completed physical
+        // operation through transitionPostApproval(). None of them is ever
+        // derived, so none may be re-derived either. Without this an ordinary
+        // advance() -- the customer merely opening their application page --
+        // would recompute the pre-approval ladder from the signed contract and
+        // silently move an approved, delivered or returned rental back to
+        // AwaitingFinalApproval.
+        if (in_array($application->state, [
+            RentalApplicationState::Approved,
+            RentalApplicationState::Active,
+            RentalApplicationState::Returned,
+        ], true)) {
+            return $application->state;
         }
 
         $identity = $application->user?->identity;

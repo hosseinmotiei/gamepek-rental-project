@@ -9,9 +9,9 @@ namespace App\Enums;
  * `devices.ownership` forever; custody says only who has the box right now.
  * Conflating the two is the specific mistake this domain exists to prevent.
  *
- * Customer is declared because custody genuinely has three parties and a
- * two-valued column would have to be widened later under live data. No customer
- * transfer is executable in this phase -- see CustodyTransferType.
+ * Custody genuinely has three parties. Which pairs of them may exchange a
+ * device is fixed by CustodyTransferType and enforced by a CHECK constraint --
+ * in particular a customer never hands a device straight to an owner.
  */
 enum CustodyActor: string
 {

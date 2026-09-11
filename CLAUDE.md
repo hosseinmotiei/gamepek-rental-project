@@ -49,7 +49,7 @@ repository has a **test suite of 171 test methods**.
 | Reservation release or expiry | **Not implemented** |
 | Post-approval lifecycle | Active and Returned **implemented** — driven by delivery/return operations. Closed still **blocked (B14)** |
 | Owner / lessor domain | Implemented — owners, mixed fleet, serials, admin review |
-| Operational task domain | Implemented — owner pickup, customer delivery, customer return |
+| Operational task domain | Implemented — owner pickup, customer delivery, customer return, owner return |
 | Device custody history (owner -> GamePek) | Implemented — custody is separate from ownership |
 | Live payment gateway | Not implemented — no credentials |
 | Live KYC / bank / cheque providers | Not implemented — none chosen |
@@ -58,7 +58,7 @@ repository has a **test suite of 171 test methods**.
 | Wallet-driven settlement, payout, deposit, refund, damage charges | **Not implemented** |
 | Customer profile wallet tab | Still **frontend `localStorage` prototype**, not connected to the real backend |
 | Device allocation to a reservation | Manual admin attachment implemented (`attachDevice()`), now with device-level overlap safety — **selection policy itself remains undecided (section 10.3b)** |
-| Delivery / customer return | Implemented (staff-driven). **Inspection, owner return and damage: not implemented** |
+| Delivery / customer return / owner return | Implemented (staff-driven), all four custody legs. Inspection: **free-text append-only evidence only**. **Damage valuation: not implemented** (docs/operations/OPERATIONS_AND_CUSTODY.md §14) |
 | Receipt/signature for a handover | Receipt reference recorded at the door; **whether a digital signature may replace the paper one is undecided** |
 
 The catalog entity is still named `Product`/`products`, and rental facts live
@@ -184,6 +184,9 @@ states, and it is still the ONLY thing that writes them.
 - **Active → Returned** fires when a `customer_return` operation completes.
   The return is arranged through support; there is no customer-facing
   control that starts one.
+- **Returned** is stable: `nextState()` never re-derives Approved, Active or
+  Returned, so `advance()` cannot move a post-approval rental backwards. The
+  `owner_return` operation (GamePek → owner) changes no application state.
 - **Returned → Closed** is still refused: `config('rental.lifecycle.closure_trigger')`
   is `null`, so it records `rental_application.policy_undefined`. Closure
   waits on deposit release (B4), damage assessment and media retention (B11).

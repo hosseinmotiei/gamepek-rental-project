@@ -6,6 +6,7 @@ use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
@@ -79,6 +80,12 @@ class RentalOperation extends Model
     public function custodyTransfer(): HasOne
     {
         return $this->hasOne(DeviceCustodyTransfer::class, 'rental_operation_id');
+    }
+
+    /** Condition evidence recorded against this task's handover. Append-only. */
+    public function inspections(): HasMany
+    {
+        return $this->hasMany(RentalInspection::class, 'rental_operation_id');
     }
 
     public function isTerminal(): bool

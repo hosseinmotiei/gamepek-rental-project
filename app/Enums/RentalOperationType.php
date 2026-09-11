@@ -5,16 +5,17 @@ namespace App\Enums;
 /**
  * The kind of physical work an operational task represents.
  *
- * SCOPE: three types are executable. The owner pickup that has always existed,
- * plus the delivery and customer-return pair added once the business confirmed
- * that a rental starts at physical delivery to the customer and ends when the
- * customer returns the device (docs/operations/OPERATIONS_AND_CUSTODY.md §13).
+ * SCOPE: four types, one per physical custody leg of the confirmed lifecycle
+ * (docs/operations/OPERATIONS_AND_CUSTODY.md §13 and §14):
  *
- * Owner return (GamePek handing the console back to its owner) and inspection
- * are confirmed to exist as business steps but have no service behind them, so
- * they remain ABSENT rather than declared-and-disabled: an enum case that
- * cannot be produced is a promise the code does not keep, and the audit found
- * that pattern in this project already.
+ *   owner_device_pickup  owner   -> GamePek
+ *   customer_delivery    GamePek -> customer   (Approved -> Active)
+ *   customer_return      customer -> GamePek   (Active -> Returned)
+ *   owner_return         GamePek -> owner      (no application-state effect)
+ *
+ * Inspection is NOT an operation type. It is evidence recorded against a
+ * delivery or a return (App\Models\RentalInspection), not a separate piece of
+ * physical work with its own custody leg.
  */
 enum RentalOperationType: string
 {
@@ -38,12 +39,19 @@ enum RentalOperationType: string
      */
     case CustomerReturn = 'customer_return';
 
+    /**
+     * GamePek hands a returned console back to its third-party owner (C-40).
+     * Changes no application state: closure remains undecided.
+     */
+    case OwnerReturn = 'owner_return';
+
     public function label(): string
     {
         return match ($this) {
             self::OwnerDevicePickup => 'تحویل گرفتن دستگاه از مالک',
             self::CustomerDelivery => 'تحویل دستگاه به مشتری',
             self::CustomerReturn => 'بازگشت دستگاه از مشتری',
+            self::OwnerReturn => 'بازگرداندن دستگاه به مالک',
         };
     }
 
@@ -54,6 +62,25 @@ enum RentalOperationType: string
             self::OwnerDevicePickup => CustodyTransferType::OwnerToGamePek,
             self::CustomerDelivery => CustodyTransferType::GamePekToCustomer,
             self::CustomerReturn => CustodyTransferType::CustomerToGamePek,
+            self::OwnerReturn => CustodyTransferType::GamePekToOwner,
+        };
+    }
+
+    /**
+     * The inspection stage this task's handover is inspected under, or null
+     * when no inspection is confirmed for it.
+     *
+     * Only the two handovers the confirmed rules attach a condition check to
+     * are inspectable: the door check on delivery (C-34) and the check when
+     * the customer's device comes back (C-37/C-39). No rule attaches one to
+     * the owner legs, so none is invented.
+     */
+    public function inspectionStage(): ?RentalInspectionStage
+    {
+        return match ($this) {
+            self::CustomerDelivery => RentalInspectionStage::Delivery,
+            self::CustomerReturn => RentalInspectionStage::CustomerReturn,
+            default => null,
         };
     }
 }

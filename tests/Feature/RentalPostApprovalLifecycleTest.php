@@ -246,6 +246,7 @@ class RentalPostApprovalLifecycleTest extends TestCase
         $operationalRoutes = [
             'admin.rental-applications.delivery.open' => 'Admin\OperationController@openDelivery',
             'admin.rental-applications.return.open' => 'Admin\OperationController@openReturn',
+            'admin.rental-applications.owner-return.open' => 'Admin\OperationController@openOwnerReturn',
         ];
 
         $targets = ['active', 'returned', 'closed', 'activate', 'return', 'close'];

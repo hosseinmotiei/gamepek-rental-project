@@ -449,6 +449,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             // through support, never self-service.
             Route::post('/{rentalApplication}/delivery', [AdminOperationController::class, 'openDelivery'])->name('delivery.open');
             Route::post('/{rentalApplication}/return', [AdminOperationController::class, 'openReturn'])->name('return.open');
+            // The final leg: a returned owner's console goes back to them.
+            // Changes no application state.
+            Route::post('/{rentalApplication}/owner-return', [AdminOperationController::class, 'openOwnerReturn'])->name('owner-return.open');
         });
 
         Route::get('/audit-events', [AdminAuditEventController::class, 'index'])->name('audit-events.index');
@@ -475,10 +478,10 @@ Route::prefix('admin')->name('admin.')->group(function () {
         });
 
         // ──────────────────────────────────────────────────────────────────
-        // Physical operations: owner device pickup and custody.
+        // Physical operations: the four custody legs (owner pickup, delivery,
+        // customer return, owner return) and inspection evidence.
         //
-        // Pickup only. Inspection, delivery, customer return, owner return
-        // and settlement belong to later phases and have no routes here.
+        // Damage valuation and settlement are undecided and have no routes.
         // ──────────────────────────────────────────────────────────────────
         Route::prefix('operations')->name('operations.')->group(function () {
             Route::get('/', [AdminOperationController::class, 'index'])->name('index');
@@ -491,6 +494,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::post('/{operation}/start', [AdminOperationController::class, 'start'])->name('start');
             Route::post('/{operation}/custody', [AdminOperationController::class, 'recordCustody'])->name('custody');
             Route::post('/{operation}/fail', [AdminOperationController::class, 'fail'])->name('fail');
+            Route::post('/{operation}/inspections', [AdminOperationController::class, 'recordInspection'])->name('inspections.store');
         });
 
         // ── Activity Logs ─────────────────────────────────────────────────────

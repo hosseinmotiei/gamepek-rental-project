@@ -280,9 +280,10 @@ belonging to another owner.
 
 ## 9. Not implemented — do not read these as done
 
-- Physical inspection, condition grading, inspection approval or rejection
-- Delivery, courier, customer acceptance, transition to an active rental
-- Customer return, owner return, damage, late return, lost device
+- Condition grading, damage taxonomy, inspection approval or rejection
+  (free-text inspection evidence exists -- §14)
+- Courier or third-party delivery
+- Damage valuation, late return, lost device
 - Guarantee, deposit, refund, cancellation, settlement, wallet
 - Owner penalties of any kind
 - SMS on any operational event
@@ -413,11 +414,71 @@ never collected, or take one back from a customer who never received it.
 - **Whether a digital signature may replace the signed paper receipt.** The
   requirement is confirmed; the mechanism is not, and nothing in the system
   claims the in-app confirmation is a signature.
-- **`gamepek_to_owner`** -- returning the console to its owner after a rental
-  ends. Confirmed to exist as a business step, not yet built, and therefore
-  still absent from `CustodyTransferType` rather than declared-and-disabled.
-- **Inspection as its own domain.** Only the free-text condition record
-  exists; there is no inspection entity, grading or approval step.
+- ~~`gamepek_to_owner`~~ and ~~inspection~~ -- both since built; see §14.
+
+## 14. Inspection, return hardening and the owner return -- IMPLEMENTED
+
+### 14.1 Confirmed behaviour now in code
+
+| Rule | Where it lives |
+|---|---|
+| The device eventually goes back from GamePek to its owner (C-40) | `owner_return` operation + `gamepek_to_owner` leg; staff-opened only once the rental is `Returned`, owner devices only |
+| A customer never hands a device straight to its owner | there is no `customer_to_owner` type; `device_custody_actor_pair_ck` refuses one, and every leg requires its source side to hold the device |
+| The owner's two-hour window runs from GamePek receiving the device back (C-38) | only `customer_to_gamepek` starts it (`CustodyTransferType::startsOwnerDefectReportWindow()`); shown on the admin operation screen; nothing acts on it |
+| GamePek's expert determines damage (C-39) | supported as evidence only: `rental_inspections`, free text, no amount |
+
+### 14.2 Technical foundations (not business decisions)
+
+- **Inspection record.** `rental_inspections` is append-only (model refuses
+  update/delete, no `updated_at`), fully guarded against mass assignment, and
+  written only by `RentalInspectionService`. Device, reservation, application,
+  handover and stage are derived from the operation under a row lock and
+  cross-checked; nothing is taken from the request except `findings`. Only
+  `customer_delivery` and `customer_return` are inspectable, and only after
+  their handover is recorded. The handover's own `notes` stays the door
+  check; inspections add later evidence (e.g. the expert's diagnosis).
+  Findings are staff-only and never rendered to customers or owners.
+- **Return hardening.** A customer return must follow THIS rental's own
+  delivery (the device's latest movement must be that delivery); an owner
+  return must follow THIS rental's own customer return and name the device's
+  real owner. Cross-rental evidence is refused.
+- **Custody-aware pickups (bug fix).** Once the lifecycle is circular an
+  owner's console may still be with GamePek between rentals. `attachDevice()`
+  now resolves such a pickup to `not_required`, and the owner pickup refuses
+  to record a handover unless the owner actually holds the device -- it
+  previously could record an owner -> GamePek handover nobody made.
+  Limitation: a pickup attached while the device is with another customer
+  stays `scheduled` and cannot complete; staff mark it failed.
+- **Owner acknowledgement** now covers both owner legs and re-checks, inside
+  the service, that the acting user is the owner named on the transfer.
+- **Reconciler** covers all four legs (new `completed_but_custody_not_owner`)
+  and inspections (`inspection_reference_mismatch`). Still read-only.
+
+### 14.3 Lifecycle and availability -- deliberately unchanged
+
+- `Returned` is stable: `advance()` no longer re-derives any post-approval
+  state (bug fix -- it previously moved Active/Returned rentals back to
+  `AwaitingFinalApproval` whenever an application page was viewed). No code
+  path produces `Closed`; `closure_trigger` stays null.
+- **Technical prerequisites a future closure will need** (none decided): a
+  deposit release rule (B4), a damage outcome that can be recorded as final
+  (C-39 amount), a media-retention rule (B11), and a statement of whether
+  closure waits for the owner return or the two-hour window. The extension
+  point is `rental.lifecycle.closure_trigger` plus one more arm in
+  `RentalOperationService::advanceLifecycleAfter()` or a dedicated service
+  calling `transitionPostApproval()` -- nothing else needs to change.
+- **Reservation state is not advanced by operations** and stays `paid`
+  through delivery, return and owner return. Blocking is date-bounded, so
+  nothing blocks forever; an early return still blocks the rest of its booked
+  range. Releasing that remainder is an availability policy (and interacts
+  with the product capacity model, §10), so it was left unchanged.
+
+### 14.4 Still NOT decided
+
+Damage amount and taxonomy, any charge or refund following an inspection,
+anything that follows the window closing, whether the boundary instant counts
+as inside the window, owner acceptance/signature wording for the return,
+closure, reservation release after an early return, deposit, settlement.
 
 ## 12. Delivery / customer custody feasibility analysis -- superseded by §13
 

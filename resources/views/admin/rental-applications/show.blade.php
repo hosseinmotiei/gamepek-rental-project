@@ -77,7 +77,7 @@
          ends it. The service refuses either if its preconditions do not hold,
          so these are entry points, not authority. --}}
     @can('manage_operations')
-    @if (in_array($application->state, [App\Enums\RentalApplicationState::Approved, App\Enums\RentalApplicationState::Active], true))
+    @if (in_array($application->state, [App\Enums\RentalApplicationState::Approved, App\Enums\RentalApplicationState::Active, App\Enums\RentalApplicationState::Returned], true))
     <x-admin.panel padded>
         <h2 class="font-bold text-gray-800 text-sm mb-4">عملیات فیزیکی</h2>
 
@@ -92,7 +92,7 @@
             <p class="text-[11px] text-gray-400 mt-3 leading-6">
                 اجاره تنها با تکمیل همین تحویل فعال می‌شود؛ رسیدن تاریخ شروع به‌تنهایی آن را فعال نمی‌کند.
             </p>
-        @else
+        @elseif ($application->state === App\Enums\RentalApplicationState::Active)
             <form method="POST" action="{{ route('admin.rental-applications.return.open', $application) }}"
                   data-confirm="عملیات بازگشت دستگاه از مشتری ایجاد شود؟">
                 @csrf
@@ -100,6 +100,18 @@
                     <i class="fa-solid fa-rotate-left ml-1"></i> ایجاد عملیات بازگشت دستگاه
                 </button>
             </form>
+        @else
+            {{-- Returned. The service refuses this for GamePek-owned stock. --}}
+            <form method="POST" action="{{ route('admin.rental-applications.owner-return.open', $application) }}"
+                  data-confirm="عملیات بازگرداندن دستگاه به مالک ایجاد شود؟">
+                @csrf
+                <button type="submit" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors">
+                    <i class="fa-solid fa-house-user ml-1"></i> ایجاد عملیات بازگرداندن دستگاه به مالک
+                </button>
+            </form>
+            <p class="text-[11px] text-gray-400 mt-3 leading-6">
+                بسته شدن اجاره هنوز تعریف نشده است؛ این عملیات وضعیت درخواست را تغییر نمی‌دهد.
+            </p>
         @endif
     </x-admin.panel>
     @endif

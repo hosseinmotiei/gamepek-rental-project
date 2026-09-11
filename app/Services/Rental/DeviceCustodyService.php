@@ -30,14 +30,15 @@ use Illuminate\Support\Facades\DB;
  *    GamePek custody; writing a row for it would record a handover nobody
  *    performed. Device::currentCustody() covers that case with no row at all.
  *
- *  - No delivery, customer return or owner return. Those legs are real and
- *    unimplemented; CustodyTransferType declares only the one that works.
+ *  - No customer -> owner leg. The device always passes back through GamePek;
+ *    every leg refuses unless its source side actually holds the device, so
+ *    an owner return is impossible while a customer still has it.
  *
- *  - No legal claim. `acknowledged` is the owner confirming GamePek's record.
- *    It is not a signature, not acceptance, and says nothing about the
- *    condition of the device. Signature and receipt requirements are an open
- *    legal gate (docs/business/CONFIRMED_DECISIONS.md section 4.2), and
- *    inspection belongs to a later phase.
+ *  - No legal claim. `acknowledged` is the counterparty confirming GamePek's
+ *    record. It is not a signature, not acceptance, and says nothing about the
+ *    condition of the device. Whether a digital confirmation may stand in for
+ *    the paper receipt/signature is not decided (CONFIRMED_DECISIONS.md §4.2).
+ *    Condition evidence beyond the handover note lives in RentalInspection.
  */
 class DeviceCustodyService
 {
@@ -243,6 +244,34 @@ class DeviceCustodyService
     }
 
     /**
+     * GamePek hands a returned console back to its owner (C-40).
+     *
+     * The final leg. Refused unless the device is owner-owned, is in GamePek
+     * custody, and got there through THIS rental's customer return -- so a
+     * console still with a customer can never be recorded as going straight
+     * to its owner, and one physical return cannot produce two owner returns
+     * across two rentals. Changes no application state: closure is undecided.
+     *
+     * No owner acceptance wording or signature is implied. The owner may
+     * confirm the record afterwards through the same acknowledgement as the
+     * pickup, which carries no legal weight.
+     *
+     * @throws \RuntimeException with a Persian message
+     */
+    public function requestReturnToOwner(RentalOperation $operation, User $actor): DeviceCustodyTransfer
+    {
+        return $this->openTransfer($operation, RentalOperationType::OwnerReturn, $actor);
+    }
+
+    public function recordReturnToOwner(
+        RentalOperation $operation,
+        User $actor,
+        ?string $notes = null,
+    ): DeviceCustodyTransfer {
+        return $this->recordPossessionMove($operation, RentalOperationType::OwnerReturn, $actor, $notes);
+    }
+
+    /**
      * The customer confirms GamePek's record of a handover they were party to.
      *
      * Exactly the same meaning as the owner's acknowledgement: a confirmation
@@ -286,11 +315,23 @@ class DeviceCustodyService
      */
     public function acknowledgeByOwner(DeviceCustodyTransfer $transfer, User $actor): DeviceCustodyTransfer
     {
-        // An owner may only confirm a leg they were actually a party to.
-        // Without this, an owner reaching a delivery or return record would be
-        // confirming a handover between GamePek and the customer.
-        if ($transfer->transfer_type !== CustodyTransferType::OwnerToGamePek) {
+        // An owner may only confirm a leg they were actually a party to --
+        // the pickup from them or the return to them. Without this, an owner
+        // reaching a delivery or return record would be confirming a handover
+        // between GamePek and the customer.
+        if (! $transfer->transfer_type->involvesOwner()) {
             throw new \RuntimeException('مالک طرف این انتقال تحویل نیست.');
+        }
+
+        // And it must be THEIR side of it. RentalOperationPolicy already
+        // checks this at the route; it is re-checked here against the owner
+        // reference on the transfer itself, so no future caller can skip it.
+        $ownerId = $transfer->transfer_type->source() === CustodyActor::Owner
+            ? $transfer->from_owner_id
+            : $transfer->to_owner_id;
+
+        if ($ownerId === null || $actor->owner?->id !== $ownerId) {
+            throw new \RuntimeException('این سابقه تحویل به دستگاه شما مربوط نیست.');
         }
 
         return $this->acknowledge($transfer, $actor);
@@ -522,7 +563,63 @@ class DeviceCustodyService
             throw new \RuntimeException('این دستگاه در اختیار طرفی نیست که باید آن را تحویل دهد.');
         }
 
+        // Holding the device is not enough -- it must be held BECAUSE OF THIS
+        // RENTAL. A customer may only hand back what this rental delivered to
+        // them, and an owner may only receive what this rental's customer
+        // returned. Without this, one rental's task could record evidence
+        // about another rental's handover of the same console.
+        match ($expectedType) {
+            RentalOperationType::CustomerReturn => $this->assertLatestMovementIs(
+                $device,
+                $operation,
+                CustodyTransferType::GamePekToCustomer,
+                'این دستگاه در اجرای همین اجاره به مشتری تحویل نشده است.',
+            ),
+            RentalOperationType::OwnerReturn => $this->assertOwnerReturnable($device, $operation),
+            default => null,
+        };
+
         return $device;
+    }
+
+    private function assertOwnerReturnable(Device $device, RentalOperation $operation): void
+    {
+        if ($device->ownership !== DeviceOwnership::Owner || $device->owner_id === null) {
+            throw new \RuntimeException('این دستگاه متعلق به گیم‌پک است و بازگرداندن به مالک ندارد.');
+        }
+
+        if ($operation->owner_id !== $device->owner_id) {
+            throw new \RuntimeException('مالک ثبت‌شده برای این عملیات با مالک دستگاه یکسان نیست.');
+        }
+
+        $this->assertLatestMovementIs(
+            $device,
+            $operation,
+            CustodyTransferType::CustomerToGamePek,
+            'این دستگاه در اجرای همین اجاره از مشتری دریافت نشده است.',
+        );
+    }
+
+    /**
+     * The device's most recent actual movement must be $expected, recorded
+     * for this operation's own reservation.
+     */
+    private function assertLatestMovementIs(
+        Device $device,
+        RentalOperation $operation,
+        CustodyTransferType $expected,
+        string $message,
+    ): void {
+        $latest = DeviceCustodyTransfer::where('device_id', $device->id)
+            ->possessionMoved()
+            ->latest('id')
+            ->first();
+
+        if ($latest === null
+            || $latest->transfer_type !== $expected
+            || $latest->rental_reservation_id !== $operation->rental_reservation_id) {
+            throw new \RuntimeException($message);
+        }
     }
 
     /**
@@ -579,6 +676,16 @@ class DeviceCustodyService
 
         if ($operation->owner_id !== null && $operation->owner_id !== $device->owner_id) {
             throw new \RuntimeException('مالک ثبت‌شده برای این عملیات با مالک دستگاه یکسان نیست.');
+        }
+
+        // You can only collect a device from an owner who has it. Once the
+        // lifecycle is circular, an owner's console may still be with GamePek
+        // (kept between rentals) or with another customer; recording an
+        // owner -> GamePek handover then would invent a handover nobody made.
+        // attachDevice() resolves the GamePek-custody case to `not_required`
+        // up front, so this is the backstop.
+        if ($device->currentCustody() !== CustodyActor::Owner) {
+            throw new \RuntimeException('این دستگاه اکنون در اختیار مالک نیست و تحویل گرفتن از مالک برای آن ممکن نیست.');
         }
 
         $reservation = $operation->reservation()->first();

@@ -112,15 +112,25 @@ Anything not listed in §1 is either in §4 (policy gate) or is not decided.
 | C-39 | **GamePek's expert determines the damage amount** when damage exists — no formula, taxonomy or pricing is defined |
 | C-40 | After the customer returns it, the device **eventually goes back from GamePek to the owner** |
 
-> **Implemented** (see `docs/operations/OPERATIONS_AND_CUSTODY.md` §13):
-> C-31, C-32, C-34, C-37 and the C-38 window's arithmetic, plus the
-> `gamepek_to_customer` and `customer_to_gamepek` custody legs. C-33's receipt
-> handle is recorded; whether a digital signature may replace the paper one is
-> not decided. C-40's `gamepek_to_owner` leg is **not built**.
+> **Implemented** (see `docs/operations/OPERATIONS_AND_CUSTODY.md` §13–§14):
+> C-31, C-32, C-34, C-37, C-40 and the C-38 window's arithmetic, i.e. all four
+> custody legs (`owner_to_gamepek`, `gamepek_to_customer`,
+> `customer_to_gamepek`, `gamepek_to_owner`). C-33's receipt handle is
+> recorded; whether a digital signature may replace the paper one is not
+> decided. C-39 is supported only as **evidence**: staff can append free-text
+> inspection findings to a delivery or a return; no amount is recorded.
+>
+> **How C-38 is read in code** (technical interpretation of the confirmed
+> rule, not a new decision): the window starts at `transferred_at` of the
+> `customer_to_gamepek` handover — the moment GamePek recorded receiving the
+> device back from the customer — and is half-open, so the exact two-hour
+> instant is already outside it. If the owner means the boundary instant to
+> count as inside, that is a one-line change; it has **not** been confirmed.
 >
 > **Deliberately not implemented**, because the rule stops short of a
 > computable one: C-35's penalty amount, C-36's consequences, C-39's damage
-> amount, and anything financial that follows C-38's window closing.
+> amount, and anything financial that follows C-38's window closing. No rule
+> links the owner return to the window, so an owner return is not gated on it.
 
 ---
 

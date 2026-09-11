@@ -15,12 +15,14 @@
     $startLabel = match ($operation->type) {
         RentalOperationType::CustomerDelivery => 'آغاز تحویل و باز کردن سابقه',
         RentalOperationType::CustomerReturn => 'آغاز بازگشت و باز کردن سابقه',
+        RentalOperationType::OwnerReturn => 'آغاز بازگرداندن به مالک و باز کردن سابقه',
         default => 'آغاز عملیات و درخواست تحویل',
     };
 
     $recordTitle = match ($operation->type) {
         RentalOperationType::CustomerDelivery => 'ثبت تحویل دستگاه به مشتری',
         RentalOperationType::CustomerReturn => 'ثبت دریافت دستگاه از مشتری',
+        RentalOperationType::OwnerReturn => 'ثبت تحویل دستگاه به مالک',
         default => 'ثبت تحویل گرفتن دستگاه',
     };
 
@@ -29,13 +31,17 @@
             'فقط زمانی ثبت کنید که دستگاه عملاً به مشتری تحویل داده شده و رسید آن امضا شده است. با این کار اجاره فعال می‌شود.',
         RentalOperationType::CustomerReturn =>
             'فقط زمانی ثبت کنید که دستگاه عملاً از مشتری دریافت شده است. با این کار اجاره در وضعیت بازگشت‌داده‌شده ثبت می‌شود.',
+        RentalOperationType::OwnerReturn =>
+            'فقط زمانی ثبت کنید که دستگاه عملاً به مالک تحویل داده شده است. وضعیت درخواست اجاره با این کار تغییر نمی‌کند.',
         default =>
-            'فقط زمانی ثبت کنید که دستگاه را عملاً تحویل گرفته‌اید. با این کار عملیات تکمیل می‌شود. بازرسی و تأیید وضعیت فیزیکی در این مرحله انجام نمی‌شود.',
+            'فقط زمانی ثبت کنید که دستگاه را عملاً تحویل گرفته‌اید. با این کار عملیات تکمیل می‌شود.',
     };
 
-    $notesPlaceholder = $operation->type === RentalOperationType::OwnerDevicePickup
-        ? 'یادداشت (اختیاری)'
-        : 'وضعیت دستگاه هنگام تحویل (اختیاری)';
+    $notesPlaceholder = in_array($operation->type, [RentalOperationType::CustomerDelivery, RentalOperationType::CustomerReturn], true)
+        ? 'وضعیت دستگاه هنگام تحویل (اختیاری)'
+        : 'یادداشت (اختیاری)';
+
+    $inspectable = $operation->type->inspectionStage() !== null;
 
     $badge = match ($operation->state) {
         RentalOperationState::Completed => 'bg-green-50 text-green-700 border-green-200',
@@ -171,9 +177,22 @@
                         <dd class="text-gray-700 text-xs" dir="ltr">{{ $transfer->transferred_at?->format('Y-m-d H:i') ?? '—' }}</dd>
                     </div>
                     <div class="flex justify-between py-2.5">
-                        <dt class="text-gray-500">تأیید مالک</dt>
+                        <dt class="text-gray-500">تأیید طرف مقابل</dt>
                         <dd class="text-gray-700 text-xs" dir="ltr">{{ $transfer->acknowledged_at?->format('Y-m-d H:i') ?? '—' }}</dd>
                     </div>
+                    @if ($deadline = $transfer->ownerDefectReportDeadline())
+                        {{-- C-38: arithmetic only. Nothing is triggered when it passes. --}}
+                        <div class="flex justify-between py-2.5">
+                            <dt class="text-gray-500">پایان مهلت اعلام ایراد توسط مالک</dt>
+                            <dd class="text-gray-700 text-xs" dir="ltr">{{ $deadline->format('Y-m-d H:i') }}</dd>
+                        </div>
+                    @endif
+                    @if ($transfer->notes)
+                        <div class="py-2.5">
+                            <dt class="text-gray-500 mb-1">یادداشت هنگام تحویل</dt>
+                            <dd class="text-gray-700 text-xs leading-6 whitespace-pre-line">{{ $transfer->notes }}</dd>
+                        </div>
+                    @endif
                     <div class="flex justify-between py-2.5">
                         <dt class="text-gray-500">در اختیار</dt>
                         <dd class="text-gray-700 text-xs">{{ $operation->device?->currentCustody()->label() ?? '—' }}</dd>
@@ -182,7 +201,7 @@
 
                 <p class="text-[11px] text-gray-400 mt-4 leading-6">
                     تحویل فیزیکی مالکیت دستگاه را تغییر نمی‌دهد. دستگاه همچنان متعلق به مالک ثبت‌شده است.
-                    تأیید مالک صرفاً تأیید همین سابقه است و جایگزین امضا یا رسید قانونی نیست.
+                    تأیید طرف مقابل صرفاً تأیید همین سابقه است و جایگزین امضا یا رسید قانونی نیست.
                 </p>
 
                 @if ($operation->device)
@@ -193,6 +212,47 @@
                 <p class="text-sm text-gray-400">هنوز درخواست تحویلی برای این عملیات ثبت نشده است.</p>
             @endif
         </div>
+
+        {{-- Inspection evidence: staff-only, append-only, free text. No grade,
+             severity or amount -- none is defined (C-39). --}}
+        @if ($inspectable)
+            <div class="bg-white rounded-xl border border-gray-200 p-5">
+                <h3 class="text-sm font-black text-gray-800 mb-4">بازرسی دستگاه</h3>
+
+                @if ($operation->inspections->isEmpty())
+                    <p class="text-sm text-gray-400">بازرسی‌ای ثبت نشده است.</p>
+                @else
+                    <ol class="text-sm divide-y divide-gray-100">
+                        @foreach ($operation->inspections->sortBy('id') as $inspection)
+                            <li class="py-2.5">
+                                <div class="flex items-start justify-between gap-3">
+                                    <p class="text-[11px] text-gray-500">
+                                        {{ $inspection->stage->label() }} · {{ $inspection->inspector?->full_name ?? '—' }}
+                                    </p>
+                                    <span class="text-[11px] text-gray-400 shrink-0" dir="ltr">{{ $inspection->inspected_at?->format('Y-m-d H:i') }}</span>
+                                </div>
+                                <p class="text-gray-700 text-xs leading-6 mt-1 whitespace-pre-line">{{ $inspection->findings }}</p>
+                            </li>
+                        @endforeach
+                    </ol>
+                @endif
+
+                @if ($canManage && $transfer && $transfer->isPossessionMoved())
+                    <form method="POST" action="{{ route('admin.operations.inspections.store', $operation) }}" class="space-y-3 mt-4">
+                        @csrf
+                        <textarea name="findings" rows="3" required maxlength="2000" placeholder="شرح وضعیت و یافته‌های بازرسی"
+                                  class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-brandBlue"></textarea>
+                        <button type="submit" data-confirm="این بازرسی ثبت شود؟ سابقه ثبت‌شده قابل ویرایش یا حذف نیست."
+                                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700">ثبت بازرسی</button>
+                    </form>
+                    <p class="text-[11px] text-gray-400 mt-3 leading-6">
+                        بازرسی فقط سابقه وضعیت دستگاه است. مبلغ خسارت، جریمه یا اثر مالی از آن محاسبه نمی‌شود.
+                    </p>
+                @elseif (! $transfer || ! $transfer->isPossessionMoved())
+                    <p class="text-[11px] text-gray-400 mt-3 leading-6">پس از ثبت تحویل فیزیکی، امکان ثبت بازرسی فراهم می‌شود.</p>
+                @endif
+            </div>
+        @endif
 
         {{-- Audit history for this task and its handover, read from the
              existing audit_events table. No second audit mechanism. --}}
@@ -302,7 +362,7 @@
 
         @if ($operation->state === RentalOperationState::NotRequired)
             <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 text-xs text-gray-600 leading-6">
-                دستگاه تخصیص‌یافته متعلق به گیم‌پک است، بنابراین تحویل گرفتن از مالک موضوعیت ندارد و سابقه تحویلی ثبت نمی‌شود.
+                دستگاه تخصیص‌یافته هم‌اکنون در اختیار گیم‌پک است (یا متعلق به خود گیم‌پک است)، بنابراین تحویل گرفتن از مالک موضوعیت ندارد و سابقه تحویلی ثبت نمی‌شود.
             </div>
         @endif
     </div>
