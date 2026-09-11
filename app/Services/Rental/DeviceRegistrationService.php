@@ -132,12 +132,38 @@ class DeviceRegistrationService
      * UNDEFINED, so nothing is charged, deducted or escalated -- the act is
      * recorded and audited, and that is all.
      */
+    /**
+     * CONFIRMED: an owner may not take a device back before its rental ends.
+     * Disabling is the only way a device leaves the fleet, so it is refused
+     * while the device is committed to a live rental -- checked (and audited)
+     * before the transaction, and again under the device row lock that
+     * attachDevice() also takes.
+     */
     public function disable(Device $device, User $actor, ?string $reason = null): Device
     {
-        return $this->transition($device, DeviceState::Disabled, $actor, [
-            'disabled_at' => now(),
-            'disabled_reason' => $reason,
-        ], $reason);
+        if ($device->isCommittedToLiveRental()) {
+            AuditLogger::log(
+                action: 'device.disable_denied',
+                resourceType: 'Device',
+                resourceId: $device->id,
+                result: AuditLogger::RESULT_DENIED,
+                context: ['reason' => 'device_in_live_rental'],
+                actor: $actor,
+            );
+
+            throw new \RuntimeException('این دستگاه در اجاره است و تا پایان اجاره قابل غیرفعال‌سازی یا بازپس‌گیری نیست.');
+        }
+
+        return DB::transaction(function () use ($device, $actor, $reason) {
+            if (Device::where('id', $device->id)->lockForUpdate()->firstOrFail()->isCommittedToLiveRental()) {
+                throw new \RuntimeException('این دستگاه در اجاره است و تا پایان اجاره قابل غیرفعال‌سازی یا بازپس‌گیری نیست.');
+            }
+
+            return $this->transition($device, DeviceState::Disabled, $actor, [
+                'disabled_at' => now(),
+                'disabled_reason' => $reason,
+            ], $reason);
+        });
     }
 
     private function create(

@@ -12,6 +12,7 @@ use App\Services\Contract\ContractService;
 use App\Services\Contract\SignatureOtpService;
 use App\Services\Guarantee\GuaranteeService;
 use App\Services\Identity\IdentityVerificationService;
+use App\Services\Rental\DeviceRegistrationService;
 use App\Services\Rental\RentalChainOrchestrator;
 use App\Services\Rental\RentalReservationService;
 use Illuminate\Support\Str;
@@ -53,7 +54,7 @@ trait BuildsRentalChain
         return $code;
     }
 
-    protected function makeRentableProduct(): Product
+    protected function makeRentableProduct(bool $withStock = true): Product
     {
         $category = Category::create([
             'name_fa' => 'کنسول اجاره‌ای',
@@ -61,7 +62,7 @@ trait BuildsRentalChain
             'is_active' => true,
         ]);
 
-        return Product::create([
+        $product = Product::create([
             'category_id' => $category->id,
             'title_fa' => 'پلی‌استیشن ۵ اجاره‌ای',
             'slug' => 'ps5-rental-'.uniqid(),
@@ -79,6 +80,31 @@ trait BuildsRentalChain
                 ],
             ],
         ]);
+
+        // Confirmed: capacity is physical devices, and a product with none is
+        // never available. One approved GamePek-owned console gives the
+        // fixture product the single unit the chain always assumed. Tests about
+        // device REGISTRATION (not availability) opt out so their exact
+        // device counts are unaffected.
+        if ($withStock) {
+            $this->giveProductPhysicalStock($product);
+        }
+
+        return $product;
+    }
+
+    /** Register and approve $count GamePek-owned devices for the product. */
+    protected function giveProductPhysicalStock(Product $product, int $count = 1): void
+    {
+        $devices = app(DeviceRegistrationService::class);
+        $approver = User::firstOrCreate(
+            ['mobile' => '09990000001'],
+            ['full_name' => 'تأییدکننده ناوگان', 'status' => 'active'],
+        );
+
+        for ($i = 0; $i < $count; $i++) {
+            $devices->approve($devices->registerForGamePek($product, 'FIX-'.strtoupper(uniqid()).$i), $approver);
+        }
     }
 
     /**

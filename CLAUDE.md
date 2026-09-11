@@ -57,6 +57,7 @@ repository has a **test suite of 171 test methods**.
 | Wallet backend (`WalletService`, persisted balance + immutable ledger) | Implemented — nothing calls `credit()`/`debit()` yet |
 | Wallet-driven settlement, payout, deposit, refund, damage charges | **Not implemented** |
 | Customer profile wallet tab | Still **frontend `localStorage` prototype**, not connected to the real backend |
+| Availability | **Physical-device capacity** (C-55); early return frees the device (C-53); no mid-rental reclaim (C-54) — docs/operations/OPERATIONS_AND_CUSTODY.md §17 |
 | Device allocation to a reservation | Manual admin attachment implemented (`attachDevice()`), now with device-level overlap safety — **selection policy itself remains undecided (section 10.3b)** |
 | Delivery / customer return / owner return | Implemented (staff-driven), all four custody legs. Inspection: **free-text append-only evidence only**. Damage: **expert amount recorded (append-only), never charged** (docs/operations/OPERATIONS_AND_CUSTODY.md §14–§15) |
 | Settlement (35/65) | **Implemented**: `rental_total` only, owner credited once to the Owner Wallet via `WalletService`. **Manual by decision (C-48)** — no scheduler |

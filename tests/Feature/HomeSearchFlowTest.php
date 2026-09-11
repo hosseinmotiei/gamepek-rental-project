@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\RentalApplication;
 use App\Models\RentalReservation;
 use App\Models\User;
+use App\Services\Rental\DeviceRegistrationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -179,7 +180,7 @@ class HomeSearchFlowTest extends TestCase
 
     private function makeRentableProduct(string $title): Product
     {
-        return Product::create([
+        $product = Product::create([
             'category_id' => $this->category()->id,
             'title_fa' => $title,
             'slug' => 'rental-'.uniqid(),
@@ -194,6 +195,13 @@ class HomeSearchFlowTest extends TestCase
                 'status' => 'available',
             ]],
         ]);
+
+        // Confirmed: availability is physical devices; give it one unit.
+        $devices = app(DeviceRegistrationService::class);
+        $approver = User::firstOrCreate(['mobile' => '09990000001'], ['full_name' => 'تأییدکننده', 'status' => 'active']);
+        $devices->approve($devices->registerForGamePek($product, 'HS-'.strtoupper(uniqid())), $approver);
+
+        return $product;
     }
 
     private function hold(Product $product, string $from, string $to): void

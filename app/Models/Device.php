@@ -6,6 +6,7 @@ use App\Enums\CustodyActor;
 use App\Enums\DeviceOwnership;
 use App\Enums\DeviceState;
 use App\Enums\DeviceVerificationState;
+use App\Enums\RentalApplicationState;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -111,6 +112,32 @@ class Device extends Model
     public function isInGamePekCustody(): bool
     {
         return $this->currentCustody() === CustodyActor::GamePek;
+    }
+
+    /**
+     * CONFIRMED: an owner may not take a device back before its rental ends.
+     * True while a customer holds it, or while it is attached to a paid
+     * reservation whose rental has not yet come back (not Returned, Closed,
+     * Cancelled or Rejected).
+     */
+    public function isCommittedToLiveRental(): bool
+    {
+        if ($this->currentCustody() === CustodyActor::Customer) {
+            return true;
+        }
+
+        $live = array_map(
+            fn (RentalApplicationState $s) => $s->value,
+            array_filter(
+                RentalApplicationState::cases(),
+                fn (RentalApplicationState $s) => $s->order() >= 0 && $s->order() < RentalApplicationState::Returned->order(),
+            ),
+        );
+
+        return RentalReservation::where('device_id', $this->id)
+            ->blocking()
+            ->whereHas('application', fn ($q) => $q->whereIn('state', $live))
+            ->exists();
     }
 
     public function isOwnedByGamePek(): bool

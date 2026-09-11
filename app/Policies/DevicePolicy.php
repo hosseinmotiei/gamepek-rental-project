@@ -39,7 +39,9 @@ class DevicePolicy
      */
     public function disable(User $user, Device $device): bool
     {
-        return $this->update($user, $device) && $device->isApproved();
+        // Never while the device is in a live rental (confirmed: no
+        // mid-rental reclaim). The service enforces the same thing.
+        return $this->update($user, $device) && $device->isApproved() && ! $device->isCommittedToLiveRental();
     }
 
     /**

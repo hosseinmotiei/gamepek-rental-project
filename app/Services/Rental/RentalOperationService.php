@@ -10,6 +10,7 @@ use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
 use App\Models\Device;
 use App\Models\DeviceCustodyTransfer;
+use App\Models\Product;
 use App\Models\RentalOperation;
 use App\Models\RentalReservation;
 use App\Models\User;
@@ -53,7 +54,10 @@ class RentalOperationService
      * RentalChainOrchestrator, which remains the ONLY writer of
      * `rental_applications.state`. This service never assigns that column.
      */
-    public function __construct(private RentalChainOrchestrator $orchestrator) {}
+    public function __construct(
+        private RentalChainOrchestrator $orchestrator,
+        private ?RentalAvailabilityService $availability = null,
+    ) {}
 
     /**
      * Create the pickup task for a reservation whose payment has cleared.
@@ -301,7 +305,12 @@ class RentalOperationService
             throw new \RuntimeException('این دستگاه برای بازه زمانی این رزرو در دسترس نیست.');
         }
 
-        return DB::transaction(function () use ($operation, $device, $actor) {
+        return DB::transaction(function () use ($operation, $device, $actor, $reservation) {
+            // Serialise with payments admitting new bookings of this product
+            // (materialiseAfterPayment locks the same row): capacity and
+            // allocation are judged against one consistent picture.
+            Product::where('id', $reservation->product_id)->lockForUpdate()->first();
+
             $locked = RentalOperation::where('id', $operation->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->isTerminal()) {
@@ -358,6 +367,15 @@ class RentalOperationService
             // product-level call site are untouched).
             if ($this->deviceOverlapsAnotherBlockingReservation($device->id, $reservation)) {
                 throw new \RuntimeException('این دستگاه برای بازه زمانی این رزرو در دسترس نیست.');
+            }
+
+            // A safety check, not a selection policy: refuse a choice that
+            // would leave another paid reservation of this product with no
+            // device it could still receive.
+            $availability = $this->availability ??= app(RentalAvailabilityService::class);
+
+            if (! $availability->attachmentKeepsEveryReservationAssignable($reservation, $device->id)) {
+                throw new \RuntimeException('تخصیص این دستگاه، رزرو دیگری از همین مدل را بدون دستگاه می‌گذارد. دستگاه دیگری انتخاب کنید.');
             }
 
             $locked->device_id = $device->id;
@@ -572,6 +590,17 @@ class RentalOperationService
 
         if ($target === null) {
             return;
+        }
+
+        // CONFIRMED: an early return frees the device for its remaining days.
+        // Record the day the handover proved, beside -- never instead of --
+        // the contractual end date. Written only here, in the same
+        // transaction as the completed customer return.
+        if ($operation->type === RentalOperationType::CustomerReturn) {
+            $transfer = $operation->custodyTransfer()->firstOrFail();
+            $reservation = RentalReservation::whereKey($operation->rental_reservation_id)->lockForUpdate()->firstOrFail();
+            $reservation->returned_on = $transfer->transferred_at->toDateString();
+            $reservation->save();
         }
 
         $this->orchestrator->transitionPostApproval(

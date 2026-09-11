@@ -4,6 +4,7 @@ namespace App\Services\Rental;
 
 use App\Enums\CustodyActor;
 use App\Enums\DeviceOwnership;
+use App\Enums\DeviceState;
 use App\Enums\RentalApplicationState;
 use App\Enums\RentalOperationState;
 use App\Enums\RentalOperationType;
@@ -119,6 +120,21 @@ class OperationCustodyReconciler
     /** A reservation whose payable amount includes the deposit figure. */
     public const DEPOSIT_IN_PAYMENT = 'deposit_in_payment';
 
+    /** One physical device on two overlapping blocking reservations. */
+    public const DEVICE_DOUBLE_BOOKED = 'device_double_booked';
+
+    /** A product's bookings can no longer all be given a physical device. */
+    public const CAPACITY_EXCEEDED = 'capacity_exceeded';
+
+    /** A reservation attached to a device of a different product. */
+    public const RESERVATION_DEVICE_PRODUCT_MISMATCH = 'reservation_device_product_mismatch';
+
+    /** A device taken out of the fleet (or back to its owner) mid-rental. */
+    public const OWNER_RECLAIM_DURING_RENTAL = 'owner_reclaim_during_rental';
+
+    /** returned_on disagrees with the customer-return handover. */
+    public const RETURN_RELEASE_MISMATCH = 'return_release_mismatch';
+
     /** The completed task and its transfer describe different legs. */
     public const TRANSFER_TYPE_MISMATCH = 'transfer_type_mismatch';
 
@@ -146,6 +162,7 @@ class OperationCustodyReconciler
             ->merge($this->inspectionFindings())
             ->merge($this->lifecycleFindings())
             ->merge($this->financeFindings())
+            ->merge($this->availabilityFindings())
             // A device mismatch is visible from both sides; report it once.
             ->unique(fn (array $f) => $f['code'].'|'.$f['operation_id'].'|'.$f['transfer_reference'])
             ->values();
@@ -183,6 +200,11 @@ class OperationCustodyReconciler
             self::CANCELLED_RENTAL_FINANCIAL_EFFECT => 'اجاره لغوشده اثر مالی یا تعیین تکلیف سفته دارد',
             self::SETTLEMENT_BASE_MISMATCH => 'مبنای تسویه با مبلغ اجاره (بدون هزینه ارسال) برابر نیست',
             self::DEPOSIT_IN_PAYMENT => 'مبلغ پرداختی شامل مبلغ ودیعه است',
+            self::DEVICE_DOUBLE_BOOKED => 'یک دستگاه برای دو رزرو هم‌پوشان تخصیص یافته است',
+            self::CAPACITY_EXCEEDED => 'رزروهای این مدل بیش از دستگاه‌های قابل اجاره آن است',
+            self::RESERVATION_DEVICE_PRODUCT_MISMATCH => 'دستگاه تخصیص‌یافته از مدل رزروشده نیست',
+            self::OWNER_RECLAIM_DURING_RENTAL => 'دستگاه در میانه اجاره از چرخه خارج یا به مالک برگردانده شده است',
+            self::RETURN_RELEASE_MISMATCH => 'تاریخ آزادشدن دستگاه با سابقه بازگشت آن هم‌خوان نیست',
             self::TRANSFER_TYPE_MISMATCH => 'نوع سابقه تحویل با نوع عملیات یکسان نیست',
             self::DEVICE_MISMATCH => 'دستگاه عملیات با دستگاه سابقه تحویل یکسان نیست',
             self::TRANSFERRED_BUT_NOT_COMPLETED => 'تحویل ثبت شده اما عملیات بسته نشده است',
@@ -548,6 +570,84 @@ class OperationCustodyReconciler
             ->whereRaw('payable_now = rental_total + delivery_fee + deposit_amount')
             ->pluck('id')
             ->each(fn ($id) => $add(self::DEPOSIT_IN_PAYMENT, 'رزرو شماره '.$id.' مبلغ ودیعه را در مبلغ پرداختی دارد.'));
+
+        return collect($findings);
+    }
+
+    /**
+     * Physical-capacity invariants. Valid multi-device rentals, early-returned
+     * devices and either ownership produce no finding.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function availabilityFindings(): Collection
+    {
+        $findings = [];
+        $add = function (string $code, string $detail) use (&$findings) {
+            $findings[] = $this->finding($code, null, null, $detail);
+        };
+
+        $blocking = RentalReservation::blocking()
+            ->get(['id', 'product_id', 'device_id', 'start_date', 'end_date', 'returned_on', 'rental_application_id']);
+
+        foreach ($blocking->whereNotNull('device_id') as $reservation) {
+            $productId = Device::whereKey($reservation->device_id)->value('product_id');
+
+            if ($productId !== null && (int) $productId !== $reservation->product_id) {
+                $add(self::RESERVATION_DEVICE_PRODUCT_MISMATCH, 'رزرو شماره '.$reservation->id.' به دستگاهی از مدل دیگر متصل است.');
+            }
+        }
+
+        foreach ($blocking->whereNotNull('device_id')->groupBy('device_id') as $deviceId => $rows) {
+            $rows = $rows->values();
+
+            for ($i = 0; $i < $rows->count(); $i++) {
+                for ($j = $i + 1; $j < $rows->count(); $j++) {
+                    $a = $rows[$i];
+                    $b = $rows[$j];
+
+                    if ($a->start_date->lessThanOrEqualTo($b->blockedUntil()) && $b->start_date->lessThanOrEqualTo($a->blockedUntil())) {
+                        $add(self::DEVICE_DOUBLE_BOOKED, 'دستگاه شماره '.$deviceId.' همزمان برای رزروهای '.$a->id.' و '.$b->id.' تخصیص یافته است.');
+                    }
+                }
+            }
+        }
+
+        $availability = app(RentalAvailabilityService::class);
+
+        foreach ($blocking->pluck('product_id')->unique() as $productId) {
+            if (! $availability->isCurrentlyAssignable((int) $productId)) {
+                $add(self::CAPACITY_EXCEEDED, 'رزروهای محصول شماره '.$productId.' بیش از ظرفیت دستگاه‌های قابل اجاره آن است.');
+            }
+        }
+
+        $returnDates = RentalOperation::where('type', RentalOperationType::CustomerReturn->value)
+            ->where('state', RentalOperationState::Completed->value)
+            ->with('custodyTransfer')
+            ->get()
+            ->mapWithKeys(fn (RentalOperation $op) => [$op->rental_reservation_id => $op->custodyTransfer?->transferred_at?->toDateString()]);
+
+        $released = RentalReservation::whereNotNull('returned_on')
+            ->orWhereIn('id', $returnDates->keys())
+            ->get(['id', 'returned_on']);
+
+        foreach ($released as $reservation) {
+            if ($reservation->returned_on?->toDateString() !== $returnDates->get($reservation->id)) {
+                $add(self::RETURN_RELEASE_MISMATCH, 'تاریخ آزادشدن رزرو شماره '.$reservation->id.' با سابقه بازگشت دستگاه برابر نیست.');
+            }
+        }
+
+        foreach (Device::where('state', DeviceState::Disabled->value)->get() as $device) {
+            if ($device->isCommittedToLiveRental()) {
+                $add(self::OWNER_RECLAIM_DURING_RENTAL, 'دستگاه شماره '.$device->id.' در میانه اجاره غیرفعال شده است.');
+            }
+        }
+
+        RentalOperation::where('type', RentalOperationType::OwnerReturn->value)
+            ->where('state', RentalOperationState::Completed->value)
+            ->whereHas('application', fn ($q) => $q->where('state', RentalApplicationState::Active->value))
+            ->pluck('operation_number')
+            ->each(fn ($number) => $add(self::OWNER_RECLAIM_DURING_RENTAL, 'عملیات '.$number.' دستگاه را در اجاره فعال به مالک برگردانده است.'));
 
         return collect($findings);
     }

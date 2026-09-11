@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 
 class RentalReservation extends Model
 {
@@ -25,6 +26,7 @@ class RentalReservation extends Model
             'quote' => 'array',
             'start_date' => 'date',
             'end_date' => 'date',
+            'returned_on' => 'date',
             'held_until' => 'datetime',
             'days' => 'integer',
             'daily_rate' => 'integer',
@@ -51,9 +53,11 @@ class RentalReservation extends Model
     /**
      * The physical device serving this reservation.
      *
-     * NULL on every row written today: which free device a paid reservation
-     * gets is an undecided policy (see the device_id migration). It is filled
-     * only when a human attaches one explicitly through an operational task.
+     * NULL when a reservation is paid: which free device it gets is still a
+     * human choice (no selection policy is decided). It is filled only when
+     * staff attach one through an operational task, and attachDevice() refuses
+     * a choice that would leave another paid reservation of the same product
+     * without any possible device (RentalAvailabilityService).
      */
     public function device(): BelongsTo
     {
@@ -78,9 +82,23 @@ class RentalReservation extends Model
      */
     public function scopeOverlapping($query, int $productId, string $startDate, string $endDate)
     {
+        // The blocking period ends at the ACTUAL return when the customer
+        // brought the device back early, otherwise at the contractual end.
+        // Still the one overlap predicate in the codebase.
         return $query->where('product_id', $productId)
             ->where('start_date', '<=', $endDate)
-            ->where('end_date', '>=', $startDate);
+            ->whereRaw('LEAST(end_date, COALESCE(returned_on, end_date)) >= ?', [$startDate]);
+    }
+
+    /**
+     * The last day this reservation occupies its device: the actual return
+     * day after an early return, else the contractual end date.
+     */
+    public function blockedUntil(): Carbon
+    {
+        return $this->returned_on !== null && $this->returned_on->lessThan($this->end_date)
+            ? $this->returned_on
+            : $this->end_date;
     }
 
     /**

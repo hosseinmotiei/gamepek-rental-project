@@ -342,7 +342,13 @@ class RentalAvailabilitySemanticsTest extends TestCase
 
     // ── Device eligibility does not leak into availability ───────────────
 
-    public function test_registering_or_approving_a_device_does_not_change_availability(): void
+    /**
+     * SUPERSEDED premise: this used to pin "adding a device cannot free a
+     * committed range" (one reservation per product). Confirmed since:
+     * capacity is physical devices, so an approved second device IS a second
+     * unit -- while which unit serves which booking is still a human choice.
+     */
+    public function test_approving_another_device_adds_capacity_for_an_overlapping_range(): void
     {
         $product = $this->makeRentableProduct();
         $devices = app(DeviceRegistrationService::class);
@@ -354,15 +360,15 @@ class RentalAvailabilitySemanticsTest extends TestCase
         $this->blockingReservation($product, $start, $end);
         $this->assertFalse($this->availability->isFree($product->id, $start, $end));
 
-        // A brand-new approved device does NOT free a committed range.
-        // Availability is not allocation: which device serves a reservation is
-        // an undecided policy, and adding fleet cannot un-commit inventory.
         $ownerUser = User::create(['full_name' => 'مالک', 'mobile' => '09230001001', 'status' => 'active']);
         $owner = $devices->ensureOwnerProfile($ownerUser);
-        $device = $devices->approve($devices->registerForOwner($owner, $product, 'AVL-05A-1'), $admin);
+        $device = $devices->registerForOwner($owner, $product, 'AVL-05A-1');
 
+        // Registered but not approved: not a rentable unit yet.
         $this->assertFalse($this->availability->isFree($product->id, $start, $end));
-        $this->assertTrue($device->fresh()->isRentable());
+
+        $devices->approve($device, $admin);
+        $this->assertTrue($this->availability->isFree($product->id, $start, $end));
     }
 
     public function test_a_gamepek_owned_device_needs_no_owner_for_availability(): void

@@ -538,22 +538,29 @@ class RentalFinanceFoundationTest extends TestCase
 
     // ── 5. Early return: current behaviour, documented and pinned ────────
 
-    public function test_an_early_return_keeps_the_remaining_dates_blocked_at_product_and_device_level(): void
+    /**
+     * SUPERSEDED premise: this used to pin "an early return keeps the
+     * remaining dates blocked" while early-return release was undecided.
+     * Confirmed since: the returned device is free for its remaining days --
+     * at product AND device level -- while the contract is left untouched.
+     */
+    public function test_an_early_return_frees_the_remaining_dates_at_product_and_device_level(): void
     {
         [, , $reservation, $device] = $this->returned('09170005039', '09170005040', 'EAR-001');
 
         // The device came back before the booked range even ended.
         $this->assertTrue(now()->lessThan($reservation->end_date));
         $this->assertSame('paid', $reservation->refresh()->state->value);
+        $this->assertSame(now()->toDateString(), $reservation->returned_on->toDateString());
 
-        // Product level: the booked dates still block.
-        $this->assertTrue(RentalReservation::overlapping(
+        // Product level: the unused booked days no longer block.
+        $this->assertFalse(RentalReservation::overlapping(
             $reservation->product_id,
             $reservation->start_date->toDateString(),
             $reservation->end_date->toDateString(),
-        )->blocking()->exists());
+        )->blocking()->whereKey($reservation->id)->exists());
 
-        // Device level: another rental over the same dates cannot take it.
+        // Device level: another rental over those days CAN take the device.
         $other = $this->paidApplication($this->customer('09170005041'), $this->uniqueNationalCode())->reservation()->firstOrFail();
         DB::table('rental_reservations')->where('id', $other->id)->update([
             'product_id' => $device->product_id,
@@ -561,7 +568,7 @@ class RentalFinanceFoundationTest extends TestCase
             'end_date' => $reservation->end_date->copy()->addDay()->toDateString(),
         ]);
 
-        $this->expectException(\RuntimeException::class);
         $this->operations->attachDevice($this->operation($other->refresh(), RentalOperationType::OwnerDevicePickup), $device, $this->admin);
+        $this->assertSame($device->id, $other->refresh()->device_id);
     }
 }

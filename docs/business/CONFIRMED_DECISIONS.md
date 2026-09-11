@@ -123,6 +123,10 @@ Anything not listed in §1 is either in §4 (policy gate) or is not decided.
 | C-50 | A paid damage goes **in full to the GamePek Wallet**; it is not split 35/65 and does not change the owner's settlement |
 | C-51 | GamePek-owned device with unpaid damage → there is no owner; the note **stays with GamePek** (no legal workflow) |
 | C-52 | Rental cancelled after the note was received → the note **stays held** by GamePek; no automatic return or transfer until a policy is defined |
+| C-53 | **Early return**: once the customer return is recorded, the device is free for the remaining unused days; no refund or price recalculation follows |
+| C-54 | An owner may **not** take a device back before its rental ends; no owner-withdrawal workflow exists |
+| C-55 | Availability is **physical-device capacity**: a product with N eligible devices can serve N overlapping rentals; one device never has two overlapping blocking reservations |
+| C-56 | When every eligible device is busy, the booking is simply refused — waitlists, queues, backorders and fallbacks are **undecided** |
 
 > **Implemented** (see `docs/operations/OPERATIONS_AND_CUSTODY.md` §13–§14):
 > C-31, C-32, C-34, C-37, C-40 and the C-38 window's arithmetic, i.e. all four

@@ -51,7 +51,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_an_unauthenticated_visitor_cannot_register_a_device(): void
     {
         $this->post(route('owner.devices.store'), [
-            'product_id' => $this->makeRentableProduct()->id,
+            'product_id' => $this->makeRentableProduct(withStock: false)->id,
             'serial_number' => 'AAA111',
         ])->assertRedirect(route('auth.login'));
 
@@ -62,7 +62,7 @@ class OwnerDeviceDomainTest extends TestCase
     {
         $this->actingAs($this->customer)
             ->post(route('owner.devices.store'), [
-                'product_id' => $this->makeRentableProduct()->id,
+                'product_id' => $this->makeRentableProduct(withStock: false)->id,
                 'serial_number' => 'AAA111',
             ])
             ->assertForbidden();
@@ -102,7 +102,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_an_owner_can_register_and_list_their_own_device(): void
     {
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $product = $this->makeRentableProduct();
+        $product = $this->makeRentableProduct(withStock: false);
 
         $this->actingAs($this->customer->fresh())
             ->post(route('owner.devices.store'), [
@@ -131,7 +131,7 @@ class OwnerDeviceDomainTest extends TestCase
 
         $this->actingAs($this->customer->fresh())
             ->post(route('owner.devices.store'), [
-                'product_id' => $this->makeRentableProduct()->id,
+                'product_id' => $this->makeRentableProduct(withStock: false)->id,
                 'serial_number' => 'SN-SUSPENDED',
             ])
             ->assertForbidden();
@@ -155,7 +155,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_a_device_enters_pending_review_and_is_not_verified(): void
     {
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(), 'SN-STATE-1');
+        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(withStock: false), 'SN-STATE-1');
 
         $this->assertSame(DeviceState::PendingReview, $device->state);
         // Registering is not verifying. The two must stay distinct.
@@ -167,7 +167,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_a_duplicate_serial_is_rejected_even_when_formatted_differently(): void
     {
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $product = $this->makeRentableProduct();
+        $product = $this->makeRentableProduct(withStock: false);
 
         $this->devices->registerForOwner($owner, $product, 'XK-52 991');
 
@@ -181,7 +181,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_the_database_itself_refuses_a_duplicate_serial(): void
     {
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $product = $this->makeRentableProduct();
+        $product = $this->makeRentableProduct(withStock: false);
         $this->devices->registerForOwner($owner, $product, 'SN-UNIQUE-1');
 
         // Straight past the service: the unique index is the real guarantee.
@@ -202,7 +202,7 @@ class OwnerDeviceDomainTest extends TestCase
 
     public function test_a_gamepek_owned_device_needs_no_owner_account(): void
     {
-        $device = $this->devices->registerForGamePek($this->makeRentableProduct(), 'SN-GP-001');
+        $device = $this->devices->registerForGamePek($this->makeRentableProduct(withStock: false), 'SN-GP-001');
 
         $this->assertSame(DeviceOwnership::GamePek, $device->ownership);
         $this->assertNull($device->owner_id);
@@ -216,7 +216,7 @@ class OwnerDeviceDomainTest extends TestCase
         $this->expectException(QueryException::class);
 
         Device::insert([
-            'product_id' => $this->makeRentableProduct()->id,
+            'product_id' => $this->makeRentableProduct(withStock: false)->id,
             'ownership' => 'owner',
             'owner_id' => null,
             'serial_number' => 'SN-BAD',
@@ -231,11 +231,11 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_one_owner_can_hold_many_devices(): void
     {
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $product = $this->makeRentableProduct();
+        $product = $this->makeRentableProduct(withStock: false);
 
         $this->devices->registerForOwner($owner, $product, 'SN-M-1');
         $this->devices->registerForOwner($owner, $product, 'SN-M-2');
-        $this->devices->registerForOwner($owner, $this->makeRentableProduct(), 'SN-M-3');
+        $this->devices->registerForOwner($owner, $this->makeRentableProduct(withStock: false), 'SN-M-3');
 
         $this->assertSame(3, $owner->devices()->count());
     }
@@ -243,7 +243,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_one_product_can_have_many_physical_devices_from_different_owners(): void
     {
         // The whole point of PRODUCT != PHYSICAL DEVICE.
-        $product = $this->makeRentableProduct();
+        $product = $this->makeRentableProduct(withStock: false);
 
         $ownerA = $this->devices->ensureOwnerProfile($this->customer);
         $userB = User::create(['full_name' => 'مالک دوم', 'mobile' => '09121230002', 'status' => 'active']);
@@ -262,7 +262,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_an_owner_cannot_view_another_owners_device(): void
     {
         $ownerA = $this->devices->ensureOwnerProfile($this->customer);
-        $deviceA = $this->devices->registerForOwner($ownerA, $this->makeRentableProduct(), 'SN-ISO-A');
+        $deviceA = $this->devices->registerForOwner($ownerA, $this->makeRentableProduct(withStock: false), 'SN-ISO-A');
 
         $userB = User::create(['full_name' => 'مالک دوم', 'mobile' => '09121230003', 'status' => 'active']);
         $this->devices->ensureOwnerProfile($userB);
@@ -275,7 +275,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_an_owner_cannot_disable_another_owners_device(): void
     {
         $ownerA = $this->devices->ensureOwnerProfile($this->customer);
-        $deviceA = $this->devices->registerForOwner($ownerA, $this->makeRentableProduct(), 'SN-ISO-B');
+        $deviceA = $this->devices->registerForOwner($ownerA, $this->makeRentableProduct(withStock: false), 'SN-ISO-B');
 
         $userB = User::create(['full_name' => 'مالک دوم', 'mobile' => '09121230004', 'status' => 'active']);
         $this->devices->ensureOwnerProfile($userB);
@@ -290,7 +290,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_no_owner_ability_reaches_a_gamepek_device(): void
     {
         $this->devices->ensureOwnerProfile($this->customer);
-        $device = $this->devices->registerForGamePek($this->makeRentableProduct(), 'SN-GP-ISO');
+        $device = $this->devices->registerForGamePek($this->makeRentableProduct(withStock: false), 'SN-GP-ISO');
 
         $this->actingAs($this->customer->fresh())
             ->get(route('owner.devices.show', $device))
@@ -300,7 +300,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_an_owner_cannot_approve_their_own_device(): void
     {
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(), 'SN-APPROVE-SELF');
+        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(withStock: false), 'SN-APPROVE-SELF');
 
         // No owner-side ability grants approval, and the admin route needs a
         // permission this account does not have.
@@ -318,7 +318,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_an_owner_cannot_reassign_ownership_or_state_by_posting_fields(): void
     {
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $product = $this->makeRentableProduct();
+        $product = $this->makeRentableProduct(withStock: false);
 
         $this->actingAs($this->customer->fresh())
             ->post(route('owner.devices.store'), [
@@ -345,7 +345,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_an_owner_cannot_change_gamepek_pricing_through_the_device(): void
     {
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $product = $this->makeRentableProduct();
+        $product = $this->makeRentableProduct(withStock: false);
         $originalPrice = $product->price;
 
         $this->actingAs($this->customer->fresh())
@@ -378,7 +378,7 @@ class OwnerDeviceDomainTest extends TestCase
         $admin->assignRole(Role::findByName('super_admin'));
 
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(), 'SN-ADMIN-1');
+        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(withStock: false), 'SN-ADMIN-1');
 
         $this->actingAs($admin)->get(route('admin.owners.index'))->assertOk();
         $this->actingAs($admin)->get(route('admin.owners.show', $owner))->assertOk();
@@ -408,7 +408,7 @@ class OwnerDeviceDomainTest extends TestCase
         $admin->assignRole(Role::findByName('super_admin'));
 
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(), 'SN-REJECT-1');
+        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(withStock: false), 'SN-REJECT-1');
 
         $this->actingAs($admin)
             ->post(route('admin.devices.reject', $device), ['reason' => 'سریال ناخوانا'])
@@ -423,7 +423,7 @@ class OwnerDeviceDomainTest extends TestCase
     public function test_a_plain_customer_cannot_reach_the_admin_fleet_screens(): void
     {
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(), 'SN-NOADMIN-1');
+        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(withStock: false), 'SN-NOADMIN-1');
 
         // EnsureIsAdmin bounces a non-admin to the admin login rather than
         // returning 403. Either way the screen is unreachable; what matters is
@@ -446,7 +446,7 @@ class OwnerDeviceDomainTest extends TestCase
         $admin->assignRole(Role::findByName('super_admin'));
 
         $owner = $this->devices->ensureOwnerProfile($this->customer);
-        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(), 'SN-DISABLE-1');
+        $device = $this->devices->registerForOwner($owner, $this->makeRentableProduct(withStock: false), 'SN-DISABLE-1');
         $this->devices->approve($device, $admin);
 
         $this->actingAs($this->customer->fresh())

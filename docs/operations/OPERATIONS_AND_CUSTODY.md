@@ -511,7 +511,7 @@ Refinements (operations-integrity batch):
   (`active_without_delivery`, `returned_without_return`,
   `lifecycle_behind_operation`). Still read-only.
 
-### 14.5 Early return -- the exact technical dependency (behaviour unchanged)
+### 14.5 Early return -- SUPERSEDED by §17 (now implemented, C-53)
 
 Availability is decided by two predicates on `rental_reservations` and
 nothing else: `scopeOverlapping()` (dates) and `scopeBlocking()` (state is
@@ -654,6 +654,52 @@ whether a customer may still pay after the note was retained by GamePek
 product's legacy `deposit` figure (still stored as
 `reservation.deposit_amount`, shown to staff only, and fed into the
 contract template's `deposit_amount` placeholder).
+
+## 17. Physical-device capacity, early return, no mid-rental reclaim
+
+Implements C-53–C-56.
+
+**Old assumption removed.** `RentalAvailabilityService::isFree()`,
+`constrainProductQuery()` and `blockedRangesFor()` treated any overlapping
+blocking reservation as blocking the whole product (one unit per product);
+`recordSelection()` and `materialiseAfterPayment()` relied on that.
+
+**Model now.** Eligible devices = the product's approved devices
+(`Device::rentable`). A range is available when, after adding it, every
+blocking reservation of the product can still receive its own device,
+respecting devices already attached (`App\Support\Rental\DeviceAssignmentFeasibility`,
+pure, backtracking, fail-closed on its node budget). Zero eligible devices =
+never available. A reservation blocks from `start_date` to
+`LEAST(end_date, returned_on)`.
+
+**Why feasibility, not a count.** Reservations are paid before a device is
+attached and attachment is manual; a plain count could admit bookings that a
+later manual choice strands. The same check therefore also runs in
+`attachDevice()`, which now locks the product row (serialising with
+payments) and refuses a choice that would leave another paid booking with no
+possible device. It never selects a device.
+
+**Early return.** `rental_reservations.returned_on` is written only when the
+`customer_return` handover completes (RentalOperationService, same
+transaction). The contractual dates, price, settlement and close-out are
+untouched; the return day still blocks, the following days are free.
+
+**No mid-rental reclaim.** `DeviceRegistrationService::disable()` (audited,
+re-checked under the device lock) and `DevicePolicy::disable` refuse while
+the device is with a customer or attached to a paid reservation whose rental
+has not returned. The only way home remains the post-return owner-return leg.
+
+**Reconciler:** device double-booked, capacity exceeded, reservation on a
+device of another product, reclaim during a rental, `returned_on` disagreeing
+with the return handover.
+
+**Customer UI:** search lists a product only when a unit is free; the
+calendar marks only days with no free unit; a refused booking shows the
+existing Persian conflict message. No waitlist is mentioned.
+
+Still NOT decided: what happens when all devices are busy (C-56); late
+return; whether a disabled device's future unassigned bookings are
+re-planned; device selection policy (still manual).
 
 ## 12. Delivery / customer custody feasibility analysis -- superseded by §13
 

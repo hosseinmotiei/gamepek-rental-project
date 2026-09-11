@@ -14,6 +14,7 @@ use App\Services\Banking\BankAccountService;
 use App\Services\Identity\IdentityVerificationService;
 use App\Services\Otp\OtpProviderInterface;
 use App\Services\Payment\Gateways\MockGateway;
+use App\Services\Rental\DeviceRegistrationService;
 use App\Services\Rental\RentalChainOrchestrator;
 use Database\Seeders\ContractTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -297,7 +298,7 @@ class RentalBookingJourneyTest extends TestCase
             'show_in_menu' => true,
         ]);
 
-        return Product::create([
+        $product = Product::create([
             'category_id' => $category->id,
             'title_fa' => 'پلی‌استیشن ۵ اجاره‌ای',
             'slug' => 'ps5-journey-'.uniqid(),
@@ -313,5 +314,12 @@ class RentalBookingJourneyTest extends TestCase
                 'extra_controller_daily' => 50_000,
             ]],
         ]);
+
+        // Confirmed: availability is physical devices; give it one unit.
+        $devices = app(DeviceRegistrationService::class);
+        $approver = User::firstOrCreate(['mobile' => '09990000001'], ['full_name' => 'تأییدکننده', 'status' => 'active']);
+        $devices->approve($devices->registerForGamePek($product, 'BJ-'.strtoupper(uniqid())), $approver);
+
+        return $product;
     }
 }

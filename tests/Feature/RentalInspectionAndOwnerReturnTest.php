@@ -998,16 +998,22 @@ class RentalInspectionAndOwnerReturnTest extends TestCase
         $this->assertNull(config('rental.lifecycle.closure_trigger'));
     }
 
-    public function test_reservation_blocking_is_unchanged_by_the_return_and_stays_date_bounded(): void
+    /**
+     * SUPERSEDED premise: releasing the unused range after an early return
+     * was undecided, so this pinned "the return changes no blocking".
+     * Confirmed since: the device is free after its actual return. What still
+     * holds: the reservation's state and contractual dates are untouched.
+     */
+    public function test_an_early_return_releases_the_unused_range_without_touching_the_contract(): void
     {
         [, , $reservation] = $this->returnedToOwner('09170002100', '09170002101', 'AV-001');
+        $end = $reservation->end_date->toDateString();
 
-        // Documented, deliberately unchanged behaviour: nothing in the
-        // operational flow writes the reservation's state. Releasing the rest
-        // of the booked range after an early return is an undecided policy.
         $this->assertSame('paid', $reservation->refresh()->state->value);
+        $this->assertSame($end, $reservation->end_date->toDateString());
+        $this->assertNotNull($reservation->returned_on);
 
-        $this->assertTrue(RentalReservation::overlapping(
+        $this->assertFalse(RentalReservation::overlapping(
             $reservation->product_id,
             $reservation->start_date->toDateString(),
             $reservation->end_date->toDateString(),

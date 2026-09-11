@@ -651,11 +651,16 @@ class RentalOperationsCustodyTest extends TestCase
 
         $this->assertFalse($availability->isFree($application->product_id, $start, $end));
 
-        // Attaching a device is an operational fact, not an availability one.
+        // Confirmed since: capacity is physical devices, so approving a second
+        // device IS a second unit. What still holds: ATTACHING a device is an
+        // operational fact, not an availability one -- it changes nothing.
         $device = $this->makeOwnerWithApprovedDevice($application->product, '09130001024', 'AVL-001');
+        $beforeAttach = $availability->isFree($application->product_id, $start, $end);
+        $this->assertTrue($beforeAttach);
+
         $this->operations->attachDevice($operation, $device, $this->admin);
 
-        $this->assertFalse($availability->isFree($application->product_id, $start, $end));
+        $this->assertSame($beforeAttach, $availability->isFree($application->product_id, $start, $end));
         $this->assertTrue($availability->isFree(
             $application->product_id,
             now()->addYear()->toDateString(),
