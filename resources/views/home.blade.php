@@ -95,7 +95,7 @@
     @endif
     {{-- Promotional banner carousel (admin-managed) --}}
     <section class="mb-8 md:mb-10 relative">
-        <div id="hero-carousel" class="relative overflow-hidden rounded-2xl md:rounded-3xl aspect-[2.8/1] min-h-[160px] w-full shadow-lg">
+        <div id="hero-carousel" class="relative overflow-hidden rounded-2xl md:rounded-3xl aspect-[2.8/1] w-full shadow-lg">
             @forelse($banners as $index => $banner)
             @php $bannerLink = $banner->safe_link; @endphp
             @if($bannerLink)
